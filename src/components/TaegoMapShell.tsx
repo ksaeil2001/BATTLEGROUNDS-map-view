@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useState } from 'react';
 import type { MapAssetMode, MapDatasetConfig } from '@/domain/types';
-import type { CameraStatus, MapCameraCommand } from './LeafletMapCanvas';
+import type { MapCameraCommand } from './LeafletMapCanvas';
 
 const DynamicLeafletMapCanvas = dynamic(() => import('./LeafletMapCanvas'), {
   ssr: false,
@@ -13,7 +13,7 @@ const DynamicLeafletMapCanvas = dynamic(() => import('./LeafletMapCanvas'), {
 });
 
 interface TaegoMapShellProps {
-  config: MapDatasetConfig;
+  maps: readonly MapDatasetConfig[];
 }
 
 const ASSET_MODE_COPY: Record<
@@ -29,24 +29,21 @@ const ASSET_MODE_COPY: Record<
   official: {
     badge: '공식 지도',
     assetSummary: 'KRAFTON IP 확인 지도 자산',
-    notice:
-      '비공식 팬 프로젝트 · 지도 이미지 권리 © KRAFTON, Inc.',
+    notice: '비공식 팬 프로젝트 · 지도 이미지 권리 © KRAFTON, Inc.',
   },
 };
 
-export default function TaegoMapShell({ config }: TaegoMapShellProps) {
-  const [selectedMap, setSelectedMap] = useState<'taego' | null>(null);
+export default function TaegoMapShell({ maps }: TaegoMapShellProps) {
+  const [selectedMapId, setSelectedMapId] = useState<
+    MapDatasetConfig['mapId'] | null
+  >(null);
   const [cameraCommand, setCameraCommand] = useState<MapCameraCommand | null>(
     null,
   );
-  const [cameraStatus, setCameraStatus] = useState<CameraStatus>({
-    zoom: -3,
-    centerX: config.canonicalSize / 2,
-    centerY: config.canonicalSize / 2,
-  });
 
-  const primaryZone = config.targetZones[0];
-  const assetCopy = ASSET_MODE_COPY[config.assetMode];
+  const activeConfig =
+    maps.find((candidate) => candidate.mapId === selectedMapId) ?? null;
+  const activePrimaryZone = activeConfig?.targetZones[0];
 
   const handleResetView = useCallback(() => {
     setCameraCommand((prev) => ({
@@ -56,17 +53,17 @@ export default function TaegoMapShell({ config }: TaegoMapShellProps) {
   }, []);
 
   const handleFocusTargetZone = useCallback(() => {
-    if (!primaryZone) {
+    if (!activePrimaryZone) {
       return;
     }
     setCameraCommand((prev) => ({
       id: (prev?.id ?? 0) + 1,
       type: 'focus-zone',
-      zoneId: primaryZone.id,
+      zoneId: activePrimaryZone.id,
     }));
-  }, [primaryZone]);
+  }, [activePrimaryZone]);
 
-  if (selectedMap === null) {
+  if (activeConfig === null) {
     return (
       <main className="taego-selection-page">
         <div className="taego-selection-shell">
@@ -74,56 +71,72 @@ export default function TaegoMapShell({ config }: TaegoMapShellProps) {
             <span className="taego-eyebrow">BATTLEGROUNDS Map View</span>
             <h1 className="taego-title">전술 지도 선택</h1>
             <p className="taego-subtitle">
-              지도를 선택해 {config.canonicalSize} × {config.canonicalSize}{' '}
-              Canonical Pixel Space 기반 전체 화면 탐색 뷰어를 여세요.
+              지도를 선택해 Canonical Pixel Space 기반 전체 화면 탐색 뷰어를
+              여세요.
             </p>
           </header>
 
           <section aria-label="지도 목록" className="taego-card-grid">
-            <button
-              type="button"
-              className="taego-map-card"
-              data-testid="map-selection-card"
-              onClick={() => setSelectedMap('taego')}
-            >
-              <div className="taego-map-preview-wrap">
-                <img
-                  src={config.baseImage.imagePath}
-                  alt={`태이고 ${assetCopy.badge} 미리보기`}
-                  className="taego-map-preview"
-                />
-              </div>
+            {maps.map((mapConfig) => {
+              const primaryZone = mapConfig.targetZones[0];
+              const assetCopy = ASSET_MODE_COPY[mapConfig.assetMode];
 
-              <div className="taego-map-card-body">
-                <div>
-                  <div className="taego-map-card-title-row">
-                    <h2 className="taego-map-card-title">태이고 (Taego)</h2>
-                    <span className="taego-badge">
-                      {assetCopy.badge} · {config.baseImage.mapImageVersion}
-                    </span>
+              return (
+                <button
+                  key={mapConfig.mapId}
+                  type="button"
+                  className="taego-map-card"
+                  data-testid="map-selection-card"
+                  onClick={() => setSelectedMapId(mapConfig.mapId)}
+                >
+                  <div className="taego-map-preview-wrap">
+                    <img
+                      src={mapConfig.baseImage.imagePath}
+                      alt={`${mapConfig.displayName} ${assetCopy.badge} 미리보기`}
+                      className="taego-map-preview"
+                    />
                   </div>
-                  <ul className="taego-meta-list">
-                    <li>
-                      1차 등록 구역(Target Zone):{' '}
-                      <strong>{primaryZone?.displayName ?? '미정'}</strong>
-                    </li>
-                    <li>
-                      좌표 규격: Canonical Pixel Space{' '}
-                      {config.canonicalSize} × {config.canonicalSize}
-                    </li>
-                    <li>자산 상태: {assetCopy.assetSummary}</li>
-                    <li>{assetCopy.notice}</li>
-                  </ul>
-                </div>
 
-                <span className="taego-card-cta">전체 화면 지도 열기 →</span>
-              </div>
-            </button>
+                  <div className="taego-map-card-body">
+                    <div>
+                      <div className="taego-map-card-title-row">
+                        <h2 className="taego-map-card-title">
+                          {mapConfig.displayName}
+                        </h2>
+                        <span className="taego-badge">
+                          {assetCopy.badge} ·{' '}
+                          {mapConfig.baseImage.mapImageVersion}
+                        </span>
+                      </div>
+                      <ul className="taego-meta-list">
+                        <li>
+                          등록 구역(Target Zone):{' '}
+                          <strong>
+                            {primaryZone?.displayName ?? '미확인'}
+                          </strong>{' '}
+                          · 검증된 건물 및 고정 차량 위치 제공
+                        </li>
+                        <li>
+                          좌표 규격: Canonical Pixel Space{' '}
+                          {mapConfig.canonicalSize} × {mapConfig.canonicalSize}
+                        </li>
+                        <li>자산 상태: {assetCopy.assetSummary}</li>
+                        <li>{assetCopy.notice}</li>
+                      </ul>
+                    </div>
+
+                    <span className="taego-card-cta">전체 화면 지도 열기 →</span>
+                  </div>
+                </button>
+              );
+            })}
           </section>
         </div>
       </main>
     );
   }
+
+  const activeAssetCopy = ASSET_MODE_COPY[activeConfig.assetMode];
 
   return (
     <main className="taego-viewer-screen" data-testid="map-viewer-screen">
@@ -133,7 +146,7 @@ export default function TaegoMapShell({ config }: TaegoMapShellProps) {
           className="taego-control-btn"
           data-testid="back-to-map-list-button"
           onClick={() => {
-            setSelectedMap(null);
+            setSelectedMapId(null);
             setCameraCommand(null);
           }}
         >
@@ -149,34 +162,27 @@ export default function TaegoMapShell({ config }: TaegoMapShellProps) {
           전체 보기(Reset)
         </button>
 
-        {primaryZone ? (
+        {activePrimaryZone ? (
           <button
             type="button"
             className="taego-control-btn taego-control-btn-accent"
             data-testid="target-zone-jump-button"
             onClick={handleFocusTargetZone}
           >
-            등록 구역: {primaryZone.displayName} · 이동
+            등록 구역: {activePrimaryZone.displayName} · 이동
           </button>
         ) : null}
       </div>
 
       <DynamicLeafletMapCanvas
-        config={config}
+        config={activeConfig}
         cameraCommand={cameraCommand}
-        onCameraChange={setCameraStatus}
       />
 
-      <footer
-        className="taego-status-bar"
-        data-testid="map-camera-status"
-        data-zoom={cameraStatus.zoom}
-        data-center-x={cameraStatus.centerX}
-        data-center-y={cameraStatus.centerY}
-      >
-        <span>{assetCopy.notice}</span>
+      <footer className="taego-status-bar" data-testid="map-status-bar">
+        <span>{activeAssetCopy.notice}</span>
         <span>
-          {assetCopy.badge} ({config.baseImage.mapImageVersion})
+          {activeAssetCopy.badge} ({activeConfig.baseImage.mapImageVersion})
         </span>
       </footer>
     </main>

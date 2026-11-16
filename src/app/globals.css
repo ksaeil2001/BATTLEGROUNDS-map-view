@@ -174,14 +174,6 @@ body {
   color: #fbbf24;
 }
 
-.taego-notice-footer {
-  font-size: 12px;
-  line-height: 1.5;
-  color: #94a3b8;
-  border-top: 1px solid #1e293b;
-  padding-top: 12px;
-}
-
 .taego-viewer-screen {
   position: relative;
   width: 100vw;
@@ -252,11 +244,6 @@ body {
   font-size: 12px;
   color: #cbd5e1;
   backdrop-filter: blur(6px);
-}
-
-.taego-status-coords {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #f8fafc;
 }
 
 .taego-map-loading {

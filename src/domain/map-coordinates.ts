@@ -52,15 +52,12 @@ export function toLeafletBounds([
   topLeft,
   bottomRight,
 ]: CanonicalBounds): LeafletBoundsTuple {
-  const southWest: LeafletLatLngTuple = [
-    CANONICAL_MAP_SIZE - bottomRight[1],
-    topLeft[0],
+  const [northLat, westLng] = toLeafletLatLng(topLeft);
+  const [southLat, eastLng] = toLeafletLatLng(bottomRight);
+  return [
+    [southLat, westLng],
+    [northLat, eastLng],
   ];
-  const northEast: LeafletLatLngTuple = [
-    CANONICAL_MAP_SIZE - topLeft[1],
-    bottomRight[0],
-  ];
-  return [southWest, northEast];
 }
 
 function assertPositiveDimensions({
@@ -78,42 +75,14 @@ function assertPositiveDimensions({
 }
 
 /**
- * Normalize raw pixel coordinates from an image of arbitrary resolution into
- * the 8192 x 8192 Canonical Pixel Space.
- */
-export function imagePixelToCanonicalPoint(
-  [pixelX, pixelY]: readonly [number, number],
-  dimensions: ImageDimensions,
-): CanonicalPoint {
-  assertPositiveDimensions(dimensions);
-  return [
-    (pixelX / dimensions.pixelWidth) * CANONICAL_MAP_SIZE,
-    (pixelY / dimensions.pixelHeight) * CANONICAL_MAP_SIZE,
-  ];
-}
-
-/**
- * Project a Canonical Pixel Space point into the native pixel coordinates of
- * a specific image asset resolution (e.g., 2048x2048 vs 4096x4096).
- */
-export function canonicalPointToImagePixel(
-  [x, y]: CanonicalPoint,
-  dimensions: ImageDimensions,
-): [pixelX: number, pixelY: number] {
-  assertPositiveDimensions(dimensions);
-  return [
-    (x / CANONICAL_MAP_SIZE) * dimensions.pixelWidth,
-    (y / CANONICAL_MAP_SIZE) * dimensions.pixelHeight,
-  ];
-}
-
-/**
  * Resolve all Leaflet CRS.Simple bounds for the base map, padded panning limit,
  * high-resolution overlays, and target zones in Canonical Pixel Space.
  */
 export function resolveMapLayerPlacement(
   config: MapDatasetConfig,
 ): MapLayerPlacement {
+  assertPositiveDimensions(config.baseImage);
+
   const padding = 2048;
 
   return {

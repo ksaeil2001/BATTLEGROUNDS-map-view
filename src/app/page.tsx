@@ -2,7 +2,7 @@ import TaegoMapShell from '@/components/TaegoMapShell';
 import { loadPublicMapDatasetConfig } from '@/data/load-map-config';
 
 export default function HomePage() {
-  const config = loadPublicMapDatasetConfig();
+  const taegoConfig = loadPublicMapDatasetConfig();
 
-  return <TaegoMapShell config={config} />;
+  return <TaegoMapShell maps={[taegoConfig]} />;
 }

@@ -3,17 +3,8 @@
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useEffect, useMemo, useRef } from 'react';
-import {
-  resolveMapLayerPlacement,
-  toCanonicalPixel,
-} from '@/domain/map-coordinates';
+import { resolveMapLayerPlacement } from '@/domain/map-coordinates';
 import type { MapDatasetConfig } from '@/domain/types';
-
-export interface CameraStatus {
-  zoom: number;
-  centerX: number;
-  centerY: number;
-}
 
 export type MapCameraCommand =
   | { id: number; type: 'reset' }
@@ -22,18 +13,14 @@ export type MapCameraCommand =
 interface LeafletMapCanvasProps {
   config: MapDatasetConfig;
   cameraCommand: MapCameraCommand | null;
-  onCameraChange: (status: CameraStatus) => void;
 }
 
 export default function LeafletMapCanvas({
   config,
   cameraCommand,
-  onCameraChange,
 }: LeafletMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const onCameraChangeRef = useRef(onCameraChange);
-  onCameraChangeRef.current = onCameraChange;
 
   const placement = useMemo(() => resolveMapLayerPlacement(config), [config]);
 
@@ -101,23 +88,12 @@ export default function LeafletMapCanvas({
       }
     };
 
-    const emitCameraStatus = () => {
-      syncOverlayVisibility();
-      const center = map.getCenter();
-      const [centerX, centerY] = toCanonicalPixel([center.lat, center.lng]);
-      onCameraChangeRef.current({
-        zoom: Number(map.getZoom().toFixed(2)),
-        centerX: Math.round(centerX),
-        centerY: Math.round(centerY),
-      });
-    };
-
-    map.on('moveend zoomend', emitCameraStatus);
+    map.on('zoomend', syncOverlayVisibility);
     map.fitBounds(placement.baseBounds, { animate: false });
-    emitCameraStatus();
+    syncOverlayVisibility();
 
     return () => {
-      map.off('moveend zoomend', emitCameraStatus);
+      map.off('zoomend', syncOverlayVisibility);
       map.remove();
       mapRef.current = null;
     };

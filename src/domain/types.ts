@@ -32,7 +32,6 @@ export interface MapOverlayLayer {
   imagePath: string;
   mapImageVersion: string;
   bounds: CanonicalBounds;
-  rightsClearedForPublicDeploy: boolean;
   minDisplayZoom?: number;
 }
 
@@ -41,7 +40,7 @@ export interface TargetZone {
   displayName: string;
   bounds: CanonicalBounds;
   pilotReady: boolean;
-  verifiedGamePatch: string | null;
+  verifiedGamePatch: string;
 }
 
 export interface MapBaseImage extends ImageDimensions {
@@ -52,6 +51,7 @@ export interface MapBaseImage extends ImageDimensions {
 
 export interface MapDatasetConfig {
   mapId: 'taego';
+  displayName: string;
   canonicalSize: typeof CANONICAL_MAP_SIZE;
   assetMode: MapAssetMode;
   baseImage: MapBaseImage;

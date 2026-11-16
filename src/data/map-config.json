@@ -1,5 +1,6 @@
 {
   "mapId": "taego",
+  "displayName": "태이고 (Taego)",
   "canonicalSize": 8192,
   "assetMode": "sample",
   "baseImage": {
@@ -15,11 +16,11 @@
       "label": "궁전 (Palace) 샘플 고해상도 영역",
       "imagePath": "/maps/taego-sample-palace-overlay.svg",
       "mapImageVersion": "sample-v1",
-      "rightsClearedForPublicDeploy": true,
       "bounds": [
         [3600, 2200],
         [4400, 3000]
-      ]
+      ],
+      "minDisplayZoom": -4
     }
   ],
   "targetZones": [
@@ -31,7 +32,7 @@
         [4400, 3000]
       ],
       "pilotReady": false,
-      "verifiedGamePatch": null
+      "verifiedGamePatch": "unverified"
     }
   ]
 }

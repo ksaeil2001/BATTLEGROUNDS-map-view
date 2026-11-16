@@ -1,9 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
-interface CameraReadout {
-  zoom: number;
-  centerX: number;
-  centerY: number;
+interface BoxRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 function collectRuntimeErrors(page: Page): string[] {
@@ -17,27 +18,61 @@ function collectRuntimeErrors(page: Page): string[] {
   return runtimeErrors;
 }
 
-async function readCameraStatus(page: Page): Promise<CameraReadout> {
-  const status = page.getByTestId('map-camera-status');
-  await expect(status).toBeVisible();
-  const [zoom, centerX, centerY] = await Promise.all([
-    status.getAttribute('data-zoom'),
-    status.getAttribute('data-center-x'),
-    status.getAttribute('data-center-y'),
-  ]);
+async function getBoundingBoxOrThrow(locator: Locator): Promise<BoxRect> {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  return box!;
+}
 
-  return {
-    zoom: Number(zoom),
-    centerX: Number(centerX),
-    centerY: Number(centerY),
-  };
+async function expectTargetZoneFocused(
+  page: Page,
+  initialZoneBox: BoxRect,
+  viewport: { width: number; height: number },
+): Promise<void> {
+  const zoneBoundary = page.locator('.taego-target-zone-boundary');
+  await expect
+    .poll(async () => {
+      const box = await zoneBoundary.boundingBox();
+      if (!box) {
+        return false;
+      }
+      const centerX = box.x + box.width / 2;
+      const centerY = box.y + box.height / 2;
+      return (
+        box.width > initialZoneBox.width * 2 &&
+        Math.abs(centerX - viewport.width / 2) <= 40 &&
+        Math.abs(centerY - viewport.height / 2) <= 40
+      );
+    })
+    .toBe(true);
+}
+
+async function expectFullMapReset(
+  page: Page,
+  initialBaseBox: BoxRect,
+): Promise<void> {
+  const baseOverlay = page.locator('.taego-base-overlay');
+  await expect
+    .poll(async () => {
+      const box = await baseOverlay.boundingBox();
+      if (!box) {
+        return false;
+      }
+      return (
+        Math.abs(box.width - initialBaseBox.width) <= 2 &&
+        Math.abs(box.x - initialBaseBox.x) <= 2 &&
+        Math.abs(box.y - initialBaseBox.y) <= 2
+      );
+    })
+    .toBe(true);
 }
 
 test.describe('Static sample Taego map viewer', () => {
   test('desktop user can select map, zoom, drag pan, jump to Target Zone, reset view, and return to list', async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
+    const viewport = { width: 1280, height: 800 };
+    await page.setViewportSize(viewport);
     const runtimeErrors = collectRuntimeErrors(page);
 
     await page.goto('/');
@@ -50,7 +85,7 @@ test.describe('Static sample Taego map viewer', () => {
     await expect(card).toContainText('비공식 팬 프로젝트');
 
     const previewNaturalWidth = await card
-      .locator('.taego-map-preview')
+      .getByRole('img', { name: /미리보기/ })
       .evaluate((img) => (img as HTMLImageElement).naturalWidth);
     expect(previewNaturalWidth).toBeGreaterThan(0);
 
@@ -61,16 +96,16 @@ test.describe('Static sample Taego map viewer', () => {
     await expect(viewerScreen).toBeVisible();
     await expect(leafletContainer).toBeVisible();
 
-    const box = await leafletContainer.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThanOrEqual(1280 * 0.9);
-    expect(box!.height).toBeGreaterThanOrEqual(800 * 0.9);
+    const containerBox = await getBoundingBoxOrThrow(leafletContainer);
+    expect(containerBox.width).toBeGreaterThanOrEqual(viewport.width * 0.9);
+    expect(containerBox.height).toBeGreaterThanOrEqual(viewport.height * 0.9);
 
     const baseOverlay = page.locator('.taego-base-overlay');
     const highResOverlay = page.locator('.taego-highres-overlay');
+    const zoneBoundary = page.locator('.taego-target-zone-boundary');
     await expect(baseOverlay).toHaveCount(1);
     await expect(highResOverlay).toHaveCount(1);
-    await expect(page.locator('.taego-target-zone-boundary')).toHaveCount(1);
+    await expect(zoneBoundary).toHaveCount(1);
 
     await expect
       .poll(async () =>
@@ -91,22 +126,22 @@ test.describe('Static sample Taego map viewer', () => {
       )
       .toBe(true);
 
-    const initialCamera = await readCameraStatus(page);
-    expect(initialCamera.centerX).toBeGreaterThanOrEqual(4080);
-    expect(initialCamera.centerX).toBeLessThanOrEqual(4112);
-    expect(initialCamera.centerY).toBeGreaterThanOrEqual(4080);
-    expect(initialCamera.centerY).toBeLessThanOrEqual(4112);
+    const initialBaseBox = await getBoundingBoxOrThrow(baseOverlay);
+    const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
 
-    // Wheel zoom in
+    // Wheel zoom in enlarges the rendered map overlay
     await page.mouse.move(640, 400);
     await page.mouse.wheel(0, -360);
     await expect
-      .poll(async () => (await readCameraStatus(page)).zoom)
-      .toBeGreaterThan(initialCamera.zoom);
+      .poll(async () => {
+        const zoomedBox = await baseOverlay.boundingBox();
+        return zoomedBox ? zoomedBox.width > initialBaseBox.width * 1.15 : false;
+      })
+      .toBe(true);
 
-    const zoomedCamera = await readCameraStatus(page);
+    const beforeDragBox = await getBoundingBoxOrThrow(baseOverlay);
 
-    // Drag pan across map
+    // Drag pan shifts the rendered map overlay in the drag direction
     await page.mouse.move(640, 400);
     await page.mouse.down();
     await page.mouse.move(440, 250, { steps: 10 });
@@ -114,47 +149,21 @@ test.describe('Static sample Taego map viewer', () => {
 
     await expect
       .poll(async () => {
-        const current = await readCameraStatus(page);
-        return (
-          current.centerX !== zoomedCamera.centerX &&
-          current.centerY !== zoomedCamera.centerY
-        );
+        const afterDragBox = await baseOverlay.boundingBox();
+        return afterDragBox
+          ? afterDragBox.x < beforeDragBox.x - 50 &&
+              afterDragBox.y < beforeDragBox.y - 50
+          : false;
       })
       .toBe(true);
 
-    const pannedCamera = await readCameraStatus(page);
-    expect(pannedCamera.centerX).toBeGreaterThan(zoomedCamera.centerX);
-    expect(pannedCamera.centerY).toBeGreaterThan(zoomedCamera.centerY);
-
-    // Jump to Target Zone: Palace [[3600, 2200], [4400, 3000]] -> center (4000, 2600)
+    // Jump to Target Zone: Palace centers the boundary in viewport and zooms in
     await page.getByTestId('target-zone-jump-button').click();
-    await expect
-      .poll(async () => {
-        const current = await readCameraStatus(page);
-        return (
-          current.centerX >= 3950 &&
-          current.centerX <= 4050 &&
-          current.centerY >= 2550 &&
-          current.centerY <= 2650 &&
-          current.zoom > initialCamera.zoom
-        );
-      })
-      .toBe(true);
+    await expectTargetZoneFocused(page, initialZoneBox, viewport);
 
     // Reset back to full 8192x8192 view
     await page.getByTestId('reset-view-button').click();
-    await expect
-      .poll(async () => {
-        const current = await readCameraStatus(page);
-        return (
-          current.centerX >= 4080 &&
-          current.centerX <= 4112 &&
-          current.centerY >= 4080 &&
-          current.centerY <= 4112 &&
-          current.zoom === initialCamera.zoom
-        );
-      })
-      .toBe(true);
+    await expectFullMapReset(page, initialBaseBox);
 
     // Return to map selection card
     await page.getByTestId('back-to-map-list-button').click();
@@ -166,8 +175,9 @@ test.describe('Static sample Taego map viewer', () => {
   test('mobile user (390x844) can pan via touch drag, jump to Target Zone, and reset view without overflow', async ({
     browser,
   }) => {
+    const viewport = { width: 390, height: 844 };
     const context = await browser.newContext({
-      viewport: { width: 390, height: 844 },
+      viewport,
       hasTouch: true,
       isMobile: true,
     });
@@ -185,10 +195,9 @@ test.describe('Static sample Taego map viewer', () => {
       const leafletContainer = page.locator('.leaflet-container');
       await expect(leafletContainer).toBeVisible();
 
-      const box = await leafletContainer.boundingBox();
-      expect(box).not.toBeNull();
-      expect(box!.width).toBeGreaterThanOrEqual(380);
-      expect(box!.height).toBeGreaterThanOrEqual(780);
+      const containerBox = await getBoundingBoxOrThrow(leafletContainer);
+      expect(containerBox.width).toBeGreaterThanOrEqual(380);
+      expect(containerBox.height).toBeGreaterThanOrEqual(780);
 
       const hasHorizontalOverflow = await page.evaluate(
         () =>
@@ -197,7 +206,11 @@ test.describe('Static sample Taego map viewer', () => {
       );
       expect(hasHorizontalOverflow).toBe(false);
 
-      const initialCamera = await readCameraStatus(page);
+      const baseOverlay = page.locator('.taego-base-overlay');
+      const highResOverlay = page.locator('.taego-highres-overlay');
+      const zoneBoundary = page.locator('.taego-target-zone-boundary');
+      const initialBaseBox = await getBoundingBoxOrThrow(baseOverlay);
+      const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
 
       // Single-finger touch drag pan via CDP touch events
       await cdp.send('Input.dispatchTouchEvent', {
@@ -219,42 +232,26 @@ test.describe('Static sample Taego map viewer', () => {
 
       await expect
         .poll(async () => {
-          const current = await readCameraStatus(page);
-          return (
-            current.centerX !== initialCamera.centerX ||
-            current.centerY !== initialCamera.centerY
-          );
+          const afterTouchBox = await baseOverlay.boundingBox();
+          return afterTouchBox
+            ? afterTouchBox.x < initialBaseBox.x - 30 &&
+                afterTouchBox.y < initialBaseBox.y - 30
+            : false;
         })
         .toBe(true);
 
-      // Jump to Target Zone
+      // Jump to Target Zone (also crosses minDisplayZoom: -4 so high-res overlay shows)
       await page.getByTestId('target-zone-jump-button').tap();
+      await expectTargetZoneFocused(page, initialZoneBox, viewport);
       await expect
-        .poll(async () => {
-          const current = await readCameraStatus(page);
-          return (
-            current.centerX >= 3950 &&
-            current.centerX <= 4050 &&
-            current.centerY >= 2550 &&
-            current.centerY <= 2650 &&
-            current.zoom > initialCamera.zoom
-          );
-        })
-        .toBe(true);
+        .poll(async () =>
+          highResOverlay.evaluate((el) => getComputedStyle(el).opacity),
+        )
+        .toBe('1');
 
       // Reset to full view
       await page.getByTestId('reset-view-button').tap();
-      await expect
-        .poll(async () => {
-          const current = await readCameraStatus(page);
-          return (
-            current.centerX >= 4080 &&
-            current.centerX <= 4112 &&
-            current.centerY >= 4080 &&
-            current.centerY <= 4112
-          );
-        })
-        .toBe(true);
+      await expectFullMapReset(page, initialBaseBox);
 
       expect(runtimeErrors).toEqual([]);
     } finally {

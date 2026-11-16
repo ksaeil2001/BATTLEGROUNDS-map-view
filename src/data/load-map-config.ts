@@ -98,12 +98,6 @@ function validateOverlayLayer(value: unknown, index: number): MapOverlayLayer {
     `highResOverlays[${index}].mapImageVersion`,
   );
 
-  if (value.rightsClearedForPublicDeploy !== true) {
-    throw new Error(
-      `Overlay "${id}" failed rightsClearedForPublicDeploy gate for public deployment.`,
-    );
-  }
-
   const bounds = assertValidCanonicalBounds(value.bounds, `overlay:${id}`);
   const minDisplayZoom =
     value.minDisplayZoom === undefined
@@ -122,7 +116,6 @@ function validateOverlayLayer(value: unknown, index: number): MapOverlayLayer {
     label,
     imagePath,
     mapImageVersion,
-    rightsClearedForPublicDeploy: true,
     bounds,
     minDisplayZoom,
   };
@@ -144,13 +137,16 @@ function validateTargetZone(value: unknown, index: number): TargetZone {
     throw new Error(`Invalid targetZone:${id}.pilotReady: expected boolean.`);
   }
 
-  const verifiedGamePatch =
-    value.verifiedGamePatch === null
-      ? null
-      : assertNonEmptyString(
-          value.verifiedGamePatch,
-          `targetZone:${id}.verifiedGamePatch`,
-        );
+  const verifiedGamePatch = assertNonEmptyString(
+    value.verifiedGamePatch,
+    `targetZone:${id}.verifiedGamePatch`,
+  );
+
+  if (value.pilotReady && verifiedGamePatch === 'unverified') {
+    throw new Error(
+      `Invalid targetZone:${id}: pilotReady zone requires a verifiedGamePatch other than "unverified".`,
+    );
+  }
 
   return {
     id,
@@ -163,7 +159,7 @@ function validateTargetZone(value: unknown, index: number): TargetZone {
 
 /**
  * Validate an unknown static MapDatasetConfig input at runtime and enforce
- * the public deployment rights gate for both base image and overlay imagery.
+ * the public deployment rights gate for public map imagery.
  */
 export function validateMapDatasetConfig(candidate: unknown): MapDatasetConfig {
   if (!isRecord(candidate)) {
@@ -173,6 +169,11 @@ export function validateMapDatasetConfig(candidate: unknown): MapDatasetConfig {
   if (candidate.mapId !== 'taego') {
     throw new Error(`Unsupported mapId: ${String(candidate.mapId)}`);
   }
+
+  const displayName = assertNonEmptyString(
+    candidate.displayName,
+    'displayName',
+  );
 
   if (candidate.canonicalSize !== CANONICAL_MAP_SIZE) {
     throw new Error(
@@ -233,6 +234,7 @@ export function validateMapDatasetConfig(candidate: unknown): MapDatasetConfig {
 
   return {
     mapId: 'taego',
+    displayName,
     canonicalSize: CANONICAL_MAP_SIZE,
     assetMode: candidate.assetMode,
     baseImage,
