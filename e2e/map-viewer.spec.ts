@@ -4,40 +4,41 @@ interface CameraReadout {
   zoom: number;
   centerX: number;
   centerY: number;
-  activeTarget: string;
+}
+
+function collectRuntimeErrors(page: Page): string[] {
+  const runtimeErrors: string[] = [];
+  page.on('pageerror', (error) => runtimeErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      runtimeErrors.push(message.text());
+    }
+  });
+  return runtimeErrors;
 }
 
 async function readCameraStatus(page: Page): Promise<CameraReadout> {
   const status = page.getByTestId('map-camera-status');
   await expect(status).toBeVisible();
-  const [zoom, centerX, centerY, activeTarget] = await Promise.all([
+  const [zoom, centerX, centerY] = await Promise.all([
     status.getAttribute('data-zoom'),
     status.getAttribute('data-center-x'),
     status.getAttribute('data-center-y'),
-    status.getAttribute('data-active-target'),
   ]);
 
   return {
     zoom: Number(zoom),
     centerX: Number(centerX),
     centerY: Number(centerY),
-    activeTarget: activeTarget ?? '',
   };
 }
 
-test.describe('Seam 2: Static Sample Taego Map Viewer E2E', () => {
-  test('PC 1280x800: map selection -> full-screen canvas -> zoom, pan, target zone jump, reset, back', async ({
+test.describe('Static sample Taego map viewer', () => {
+  test('desktop user can select map, zoom, drag pan, jump to Target Zone, reset view, and return to list', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-
-    const runtimeErrors: string[] = [];
-    page.on('pageerror', (error) => runtimeErrors.push(error.message));
-    page.on('console', (message) => {
-      if (message.type() === 'error') {
-        runtimeErrors.push(message.text());
-      }
-    });
+    const runtimeErrors = collectRuntimeErrors(page);
 
     await page.goto('/');
 
@@ -46,7 +47,7 @@ test.describe('Seam 2: Static Sample Taego Map Viewer E2E', () => {
     await expect(card).toContainText('태이고 (Taego)');
     await expect(card).toContainText('샘플 지도');
     await expect(card).toContainText('궁전 (Palace)');
-    await expect(page.locator('footer')).toContainText('비공식 팬 프로젝트');
+    await expect(card).toContainText('비공식 팬 프로젝트');
 
     const previewNaturalWidth = await card
       .locator('.taego-map-preview')
@@ -74,14 +75,18 @@ test.describe('Seam 2: Static Sample Taego Map Viewer E2E', () => {
     await expect
       .poll(async () =>
         baseOverlay.evaluate(
-          (img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0,
+          (img) =>
+            (img as HTMLImageElement).complete &&
+            (img as HTMLImageElement).naturalWidth > 0,
         ),
       )
       .toBe(true);
     await expect
       .poll(async () =>
         highResOverlay.evaluate(
-          (img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0,
+          (img) =>
+            (img as HTMLImageElement).complete &&
+            (img as HTMLImageElement).naturalWidth > 0,
         ),
       )
       .toBe(true);
@@ -127,11 +132,11 @@ test.describe('Seam 2: Static Sample Taego Map Viewer E2E', () => {
       .poll(async () => {
         const current = await readCameraStatus(page);
         return (
-          current.activeTarget === 'zone:palace' &&
           current.centerX >= 3950 &&
           current.centerX <= 4050 &&
           current.centerY >= 2550 &&
-          current.centerY <= 2650
+          current.centerY <= 2650 &&
+          current.zoom > initialCamera.zoom
         );
       })
       .toBe(true);
@@ -142,7 +147,6 @@ test.describe('Seam 2: Static Sample Taego Map Viewer E2E', () => {
       .poll(async () => {
         const current = await readCameraStatus(page);
         return (
-          current.activeTarget === 'full-map' &&
           current.centerX >= 4080 &&
           current.centerX <= 4112 &&
           current.centerY >= 4080 &&
@@ -159,7 +163,7 @@ test.describe('Seam 2: Static Sample Taego Map Viewer E2E', () => {
     expect(runtimeErrors).toEqual([]);
   });
 
-  test('Mobile 390x844: responsive full-screen map navigation without horizontal overflow', async ({
+  test('mobile user (390x844) can pan via touch drag, jump to Target Zone, and reset view without overflow', async ({
     browser,
   }) => {
     const context = await browser.newContext({
@@ -168,14 +172,8 @@ test.describe('Seam 2: Static Sample Taego Map Viewer E2E', () => {
       isMobile: true,
     });
     const page = await context.newPage();
-
-    const runtimeErrors: string[] = [];
-    page.on('pageerror', (error) => runtimeErrors.push(error.message));
-    page.on('console', (message) => {
-      if (message.type() === 'error') {
-        runtimeErrors.push(message.text());
-      }
-    });
+    const cdp = await context.newCDPSession(page);
+    const runtimeErrors = collectRuntimeErrors(page);
 
     try {
       await page.goto('/');
@@ -201,11 +199,23 @@ test.describe('Seam 2: Static Sample Taego Map Viewer E2E', () => {
 
       const initialCamera = await readCameraStatus(page);
 
-      // Drag/pan across the mobile viewport
-      await page.mouse.move(195, 422);
-      await page.mouse.down();
-      await page.mouse.move(120, 320, { steps: 10 });
-      await page.mouse.up();
+      // Single-finger touch drag pan via CDP touch events
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: 220, y: 440, id: 1 }],
+      });
+      for (let step = 1; step <= 6; step += 1) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [
+            { x: 220 - step * 16, y: 440 - step * 14, id: 1 },
+          ],
+        });
+      }
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+      });
 
       await expect
         .poll(async () => {
@@ -226,7 +236,8 @@ test.describe('Seam 2: Static Sample Taego Map Viewer E2E', () => {
             current.centerX >= 3950 &&
             current.centerX <= 4050 &&
             current.centerY >= 2550 &&
-            current.centerY <= 2650
+            current.centerY <= 2650 &&
+            current.zoom > initialCamera.zoom
           );
         })
         .toBe(true);

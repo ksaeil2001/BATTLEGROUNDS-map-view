@@ -2,21 +2,31 @@ import {
   CANONICAL_MAP_SIZE,
   type CanonicalBounds,
   type CanonicalPoint,
+  type ImageDimensions,
   type LeafletBoundsTuple,
   type LeafletLatLngTuple,
   type MapDatasetConfig,
 } from './types';
 
-export interface ImageDimensions {
-  pixelWidth: number;
-  pixelHeight: number;
+export interface ResolvedOverlayPlacement {
+  id: string;
+  imagePath: string;
+  bounds: LeafletBoundsTuple;
+  minDisplayZoom?: number;
+}
+
+export interface ResolvedTargetZonePlacement {
+  id: string;
+  displayName: string;
+  bounds: LeafletBoundsTuple;
 }
 
 export interface MapLayerPlacement {
-  baseLeafletBounds: LeafletBoundsTuple;
-  pointLatLng: LeafletLatLngTuple;
-  overlayBounds: Array<{ id: string; leafletBounds: LeafletBoundsTuple }>;
-  targetZoneBounds: Array<{ id: string; leafletBounds: LeafletBoundsTuple }>;
+  baseImagePath: string;
+  baseBounds: LeafletBoundsTuple;
+  paddedMaxBounds: LeafletBoundsTuple;
+  overlays: ResolvedOverlayPlacement[];
+  targetZones: ResolvedTargetZonePlacement[];
 }
 
 /**
@@ -53,47 +63,79 @@ export function toLeafletBounds([
   return [southWest, northEast];
 }
 
+function assertPositiveDimensions({
+  pixelWidth,
+  pixelHeight,
+}: ImageDimensions): void {
+  if (
+    !Number.isFinite(pixelWidth) ||
+    !Number.isFinite(pixelHeight) ||
+    pixelWidth <= 0 ||
+    pixelHeight <= 0
+  ) {
+    throw new Error('Image pixel dimensions must be positive finite numbers.');
+  }
+}
+
 /**
  * Normalize raw pixel coordinates from an image of arbitrary resolution into
  * the 8192 x 8192 Canonical Pixel Space.
  */
 export function imagePixelToCanonicalPoint(
   [pixelX, pixelY]: readonly [number, number],
-  { pixelWidth, pixelHeight }: ImageDimensions,
+  dimensions: ImageDimensions,
 ): CanonicalPoint {
-  if (pixelWidth <= 0 || pixelHeight <= 0) {
-    throw new Error('Image pixel dimensions must be positive numbers.');
-  }
-
+  assertPositiveDimensions(dimensions);
   return [
-    (pixelX / pixelWidth) * CANONICAL_MAP_SIZE,
-    (pixelY / pixelHeight) * CANONICAL_MAP_SIZE,
+    (pixelX / dimensions.pixelWidth) * CANONICAL_MAP_SIZE,
+    (pixelY / dimensions.pixelHeight) * CANONICAL_MAP_SIZE,
   ];
 }
 
 /**
- * Resolve Leaflet CRS.Simple bounds and point placement purely in Canonical Pixel Space,
- * remaining invariant across base image resolutions (e.g., 2048x2048 vs 4096x4096).
+ * Project a Canonical Pixel Space point into the native pixel coordinates of
+ * a specific image asset resolution (e.g., 2048x2048 vs 4096x4096).
+ */
+export function canonicalPointToImagePixel(
+  [x, y]: CanonicalPoint,
+  dimensions: ImageDimensions,
+): [pixelX: number, pixelY: number] {
+  assertPositiveDimensions(dimensions);
+  return [
+    (x / CANONICAL_MAP_SIZE) * dimensions.pixelWidth,
+    (y / CANONICAL_MAP_SIZE) * dimensions.pixelHeight,
+  ];
+}
+
+/**
+ * Resolve all Leaflet CRS.Simple bounds for the base map, padded panning limit,
+ * high-resolution overlays, and target zones in Canonical Pixel Space.
  */
 export function resolveMapLayerPlacement(
   config: MapDatasetConfig,
-  point: CanonicalPoint,
 ): MapLayerPlacement {
-  const fullBounds: CanonicalBounds = [
-    [0, 0],
-    [config.canonicalSize, config.canonicalSize],
-  ];
+  const padding = 2048;
 
   return {
-    baseLeafletBounds: toLeafletBounds(fullBounds),
-    pointLatLng: toLeafletLatLng(point),
-    overlayBounds: config.highResOverlays.map((overlay) => ({
+    baseImagePath: config.baseImage.imagePath,
+    baseBounds: toLeafletBounds([
+      [0, 0],
+      [config.canonicalSize, config.canonicalSize],
+    ]),
+    paddedMaxBounds: toLeafletBounds([
+      [-padding, -padding],
+      [config.canonicalSize + padding, config.canonicalSize + padding],
+    ]),
+    overlays: config.highResOverlays.map((overlay) => ({
       id: overlay.id,
-      leafletBounds: toLeafletBounds(overlay.bounds),
+      imagePath: overlay.imagePath,
+      bounds: toLeafletBounds(overlay.bounds),
+      minDisplayZoom: overlay.minDisplayZoom,
     })),
-    targetZoneBounds: config.targetZones.map((zone) => ({
+    targetZones: config.targetZones.map((zone) => ({
       id: zone.id,
-      leafletBounds: toLeafletBounds(zone.bounds),
+      displayName: zone.displayName,
+      bounds: toLeafletBounds(zone.bounds),
     })),
   };
 }

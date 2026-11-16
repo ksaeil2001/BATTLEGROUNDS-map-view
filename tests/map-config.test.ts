@@ -23,6 +23,7 @@ function makeValidSampleConfig(): MapDatasetConfig {
         label: '궁전 (Palace) 샘플 고해상도 영역',
         imagePath: '/maps/taego-sample-palace-overlay.svg',
         mapImageVersion: 'sample-v1',
+        rightsClearedForPublicDeploy: true,
         bounds: [
           [3600, 2200],
           [4400, 3000],
@@ -38,7 +39,7 @@ function makeValidSampleConfig(): MapDatasetConfig {
           [4400, 3000],
         ],
         pilotReady: false,
-        verifiedGamePatch: 'sample-only',
+        verifiedGamePatch: null,
       },
     ],
   };
@@ -52,15 +53,22 @@ describe('Static MapDatasetConfig loader and rightsClearedForPublicDeploy gate',
     expect(config.canonicalSize).toBe(8192);
     expect(config.assetMode).toBe('sample');
     expect(config.baseImage.rightsClearedForPublicDeploy).toBe(true);
+    expect(
+      config.highResOverlays.every((o) => o.rightsClearedForPublicDeploy),
+    ).toBe(true);
     expect(config.targetZones.some((zone) => zone.id === 'palace')).toBe(true);
-    expect(config.highResOverlays.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('rejects any dataset whose base image is not cleared for public deployment', () => {
+  it('rejects any dataset whose base image or overlay is not cleared for public deployment', () => {
     const unclearedSample = makeValidSampleConfig();
     unclearedSample.baseImage.rightsClearedForPublicDeploy = false;
-
     expect(() => validateMapDatasetConfig(unclearedSample)).toThrow(
+      /rightsClearedForPublicDeploy/i,
+    );
+
+    const unclearedOverlay = makeValidSampleConfig();
+    unclearedOverlay.highResOverlays[0].rightsClearedForPublicDeploy = false;
+    expect(() => validateMapDatasetConfig(unclearedOverlay)).toThrow(
       /rightsClearedForPublicDeploy/i,
     );
 
@@ -74,13 +82,22 @@ describe('Static MapDatasetConfig loader and rightsClearedForPublicDeploy gate',
         rightsClearedForPublicDeploy: false,
       },
     };
-
     expect(() => validateMapDatasetConfig(unclearedOfficial)).toThrow(
       /rightsClearedForPublicDeploy/i,
     );
   });
 
-  it('rejects TargetZone or highResOverlays bounds outside 0..8192 or inverted rectangles', () => {
+  it('rejects malformed dimensions, empty strings, and out-of-range or inverted bounds', () => {
+    const nanDimensions = makeValidSampleConfig();
+    nanDimensions.baseImage.pixelWidth = Number.NaN;
+    expect(() => validateMapDatasetConfig(nanDimensions)).toThrow(
+      /pixelWidth/i,
+    );
+
+    const emptyPath = makeValidSampleConfig();
+    emptyPath.baseImage.imagePath = '   ';
+    expect(() => validateMapDatasetConfig(emptyPath)).toThrow(/imagePath/i);
+
     const outOfRangeZone = makeValidSampleConfig();
     outOfRangeZone.targetZones[0].bounds = [
       [-10, 2200],

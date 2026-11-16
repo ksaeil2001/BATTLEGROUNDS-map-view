@@ -4,8 +4,8 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useEffect, useMemo, useRef } from 'react';
 import {
+  resolveMapLayerPlacement,
   toCanonicalPixel,
-  toLeafletBounds,
 } from '@/domain/map-coordinates';
 import type { MapDatasetConfig } from '@/domain/types';
 
@@ -13,7 +13,6 @@ export interface CameraStatus {
   zoom: number;
   centerX: number;
   centerY: number;
-  activeTarget: string;
 }
 
 export type MapCameraCommand =
@@ -33,29 +32,16 @@ export default function LeafletMapCanvas({
 }: LeafletMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const activeTargetRef = useRef<string>('full-map');
   const onCameraChangeRef = useRef(onCameraChange);
   onCameraChangeRef.current = onCameraChange;
 
-  const fullLeafletBounds = useMemo<L.LatLngBoundsExpression>(
-    () =>
-      toLeafletBounds([
-        [0, 0],
-        [config.canonicalSize, config.canonicalSize],
-      ]) as unknown as L.LatLngBoundsExpression,
-    [config.canonicalSize],
-  );
+  const placement = useMemo(() => resolveMapLayerPlacement(config), [config]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
       return;
     }
-
-    const paddedMaxBounds = toLeafletBounds([
-      [-2048, -2048],
-      [config.canonicalSize + 2048, config.canonicalSize + 2048],
-    ]) as unknown as L.LatLngBoundsExpression;
 
     const map = L.map(container, {
       crs: L.CRS.Simple,
@@ -66,32 +52,38 @@ export default function LeafletMapCanvas({
       wheelPxPerZoomLevel: 60,
       attributionControl: false,
       zoomControl: false,
-      maxBounds: paddedMaxBounds,
+      maxBounds: placement.paddedMaxBounds,
       maxBoundsViscosity: 0.5,
     });
 
     mapRef.current = map;
 
-    L.imageOverlay(config.baseImage.imagePath, fullLeafletBounds, {
+    L.imageOverlay(placement.baseImagePath, placement.baseBounds, {
       className: 'taego-base-overlay',
       interactive: false,
     }).addTo(map);
 
-    for (const overlay of config.highResOverlays) {
-      const overlayBounds = toLeafletBounds(
-        overlay.bounds,
-      ) as unknown as L.LatLngBoundsExpression;
-      L.imageOverlay(overlay.imagePath, overlayBounds, {
+    const conditionalOverlays: Array<{
+      layer: L.ImageOverlay;
+      minDisplayZoom: number;
+    }> = [];
+
+    for (const overlay of placement.overlays) {
+      const layer = L.imageOverlay(overlay.imagePath, overlay.bounds, {
         className: 'taego-highres-overlay',
         interactive: false,
       }).addTo(map);
+
+      if (overlay.minDisplayZoom !== undefined) {
+        conditionalOverlays.push({
+          layer,
+          minDisplayZoom: overlay.minDisplayZoom,
+        });
+      }
     }
 
-    for (const zone of config.targetZones) {
-      const zoneBounds = toLeafletBounds(
-        zone.bounds,
-      ) as unknown as L.LatLngBoundsExpression;
-      L.rectangle(zoneBounds, {
+    for (const zone of placement.targetZones) {
+      L.rectangle(zone.bounds, {
         color: '#f59e0b',
         weight: 2,
         dashArray: '8 6',
@@ -102,20 +94,26 @@ export default function LeafletMapCanvas({
       }).addTo(map);
     }
 
+    const syncOverlayVisibility = () => {
+      const currentZoom = map.getZoom();
+      for (const item of conditionalOverlays) {
+        item.layer.setOpacity(currentZoom >= item.minDisplayZoom ? 1 : 0);
+      }
+    };
+
     const emitCameraStatus = () => {
+      syncOverlayVisibility();
       const center = map.getCenter();
       const [centerX, centerY] = toCanonicalPixel([center.lat, center.lng]);
       onCameraChangeRef.current({
         zoom: Number(map.getZoom().toFixed(2)),
         centerX: Math.round(centerX),
         centerY: Math.round(centerY),
-        activeTarget: activeTargetRef.current,
       });
     };
 
     map.on('moveend zoomend', emitCameraStatus);
-    map.fitBounds(fullLeafletBounds, { animate: false });
-    activeTargetRef.current = 'full-map';
+    map.fitBounds(placement.baseBounds, { animate: false });
     emitCameraStatus();
 
     return () => {
@@ -123,7 +121,7 @@ export default function LeafletMapCanvas({
       map.remove();
       mapRef.current = null;
     };
-  }, [config, fullLeafletBounds]);
+  }, [placement]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -132,24 +130,19 @@ export default function LeafletMapCanvas({
     }
 
     if (cameraCommand.type === 'reset') {
-      activeTargetRef.current = 'full-map';
-      map.fitBounds(fullLeafletBounds, { animate: false });
+      map.fitBounds(placement.baseBounds, { animate: false });
       return;
     }
 
-    const zone = config.targetZones.find(
+    const zone = placement.targetZones.find(
       (candidate) => candidate.id === cameraCommand.zoneId,
     );
     if (!zone) {
       return;
     }
 
-    activeTargetRef.current = `zone:${zone.id}`;
-    const zoneBounds = toLeafletBounds(
-      zone.bounds,
-    ) as unknown as L.LatLngBoundsExpression;
-    map.flyToBounds(zoneBounds, { duration: 0.25, padding: [24, 24] });
-  }, [cameraCommand, config.targetZones, fullLeafletBounds]);
+    map.flyToBounds(zone.bounds, { duration: 0.25, padding: [24, 24] });
+  }, [cameraCommand, placement]);
 
   return (
     <div

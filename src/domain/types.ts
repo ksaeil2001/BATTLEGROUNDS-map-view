@@ -11,13 +11,18 @@ export type CanonicalBounds = readonly [
 ];
 
 /** Leaflet CRS.Simple coordinate tuple [lat, lng] mapped from [8192 - y, x]. */
-export type LeafletLatLngTuple = readonly [lat: number, lng: number];
+export type LeafletLatLngTuple = [lat: number, lng: number];
 
 /** Leaflet CRS.Simple bounding box [southWest, northEast]. */
-export type LeafletBoundsTuple = readonly [
+export type LeafletBoundsTuple = [
   southWest: LeafletLatLngTuple,
   northEast: LeafletLatLngTuple,
 ];
+
+export interface ImageDimensions {
+  pixelWidth: number;
+  pixelHeight: number;
+}
 
 export type MapAssetMode = 'sample' | 'official';
 
@@ -27,6 +32,7 @@ export interface MapOverlayLayer {
   imagePath: string;
   mapImageVersion: string;
   bounds: CanonicalBounds;
+  rightsClearedForPublicDeploy: boolean;
   minDisplayZoom?: number;
 }
 
@@ -35,14 +41,12 @@ export interface TargetZone {
   displayName: string;
   bounds: CanonicalBounds;
   pilotReady: boolean;
-  verifiedGamePatch: string;
+  verifiedGamePatch: string | null;
 }
 
-export interface MapBaseImage {
+export interface MapBaseImage extends ImageDimensions {
   imagePath: string;
   mapImageVersion: string;
-  pixelWidth: number;
-  pixelHeight: number;
   rightsClearedForPublicDeploy: boolean;
 }
 

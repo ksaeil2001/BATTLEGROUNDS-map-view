@@ -15,6 +15,7 @@
       "label": "궁전 (Palace) 샘플 고해상도 영역",
       "imagePath": "/maps/taego-sample-palace-overlay.svg",
       "mapImageVersion": "sample-v1",
+      "rightsClearedForPublicDeploy": true,
       "bounds": [
         [3600, 2200],
         [4400, 3000]
@@ -30,7 +31,7 @@
         [4400, 3000]
       ],
       "pilotReady": false,
-      "verifiedGamePatch": "sample-only"
+      "verifiedGamePatch": null
     }
   ]
 }

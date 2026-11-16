@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalPointToImagePixel,
   imagePixelToCanonicalPoint,
   resolveMapLayerPlacement,
   toCanonicalPixel,
@@ -8,7 +9,7 @@ import {
 } from '@/domain/map-coordinates';
 import type { MapDatasetConfig } from '@/domain/types';
 
-function createTestConfig(pixelSize: number): MapDatasetConfig {
+function createSampleDataset(pixelSize: number): MapDatasetConfig {
   return {
     mapId: 'taego',
     canonicalSize: 8192,
@@ -26,6 +27,7 @@ function createTestConfig(pixelSize: number): MapDatasetConfig {
         label: '궁전 (Palace) 샘플 고해상도 영역',
         imagePath: '/maps/taego-sample-palace-overlay.svg',
         mapImageVersion: 'sample-v1',
+        rightsClearedForPublicDeploy: true,
         bounds: [
           [3600, 2200],
           [4400, 3000],
@@ -41,13 +43,13 @@ function createTestConfig(pixelSize: number): MapDatasetConfig {
           [4400, 3000],
         ],
         pilotReady: false,
-        verifiedGamePatch: 'sample-only',
+        verifiedGamePatch: null,
       },
     ],
   };
 }
 
-describe('Canonical Pixel Space (8192x8192) <-> Leaflet CRS.Simple conversion', () => {
+describe('Canonical Pixel Space (8192x8192) coordinate system', () => {
   it('maps top-left (0, 0), center (4096, 4096), and bottom-right (8192, 8192) boundary points', () => {
     expect(toLeafletLatLng([0, 0])).toEqual([8192, 0]);
     expect(toLeafletLatLng([4096, 4096])).toEqual([4096, 4096]);
@@ -89,49 +91,36 @@ describe('Canonical Pixel Space (8192x8192) <-> Leaflet CRS.Simple conversion', 
     ]);
   });
 
-  it('normalizes source image pixels across 2048x2048 and 4096x4096 resolutions into identical canonical and Leaflet coordinates', () => {
-    const centerFrom2k = imagePixelToCanonicalPoint([1024, 1024], {
-      pixelWidth: 2048,
-      pixelHeight: 2048,
-    });
-    const centerFrom4k = imagePixelToCanonicalPoint([2048, 2048], {
-      pixelWidth: 4096,
-      pixelHeight: 4096,
-    });
+  it('maps a CanonicalPoint across 2048x2048 and 4096x4096 source images while landing on the exact same Leaflet coordinate', () => {
+    const config2k = createSampleDataset(2048);
+    const config4k = createSampleDataset(4096);
 
-    expect(centerFrom2k).toEqual([4096, 4096]);
-    expect(centerFrom4k).toEqual([4096, 4096]);
-    expect(toLeafletLatLng(centerFrom2k)).toEqual([4096, 4096]);
-    expect(toLeafletLatLng(centerFrom4k)).toEqual([4096, 4096]);
+    const pixel2k = canonicalPointToImagePixel([3920, 2540], config2k.baseImage);
+    const pixel4k = canonicalPointToImagePixel([3920, 2540], config4k.baseImage);
 
-    const quarterFrom2k = imagePixelToCanonicalPoint([512, 1536], {
-      pixelWidth: 2048,
-      pixelHeight: 2048,
-    });
-    const quarterFrom4k = imagePixelToCanonicalPoint([1024, 3072], {
-      pixelWidth: 4096,
-      pixelHeight: 4096,
-    });
+    expect(pixel2k).toEqual([980, 635]);
+    expect(pixel4k).toEqual([1960, 1270]);
 
-    expect(quarterFrom2k).toEqual([2048, 6144]);
-    expect(quarterFrom4k).toEqual([2048, 6144]);
-    expect(toLeafletLatLng(quarterFrom2k)).toEqual([2048, 2048]);
-    expect(toLeafletLatLng(quarterFrom4k)).toEqual([2048, 2048]);
-  });
+    const normalizedFrom2k = imagePixelToCanonicalPoint(
+      pixel2k,
+      config2k.baseImage,
+    );
+    const normalizedFrom4k = imagePixelToCanonicalPoint(
+      pixel4k,
+      config4k.baseImage,
+    );
 
-  it('keeps base map, high-res overlay, target zone, and point placement invariant when base image resolution changes from 2048x2048 to 4096x4096', () => {
-    const placement2k = resolveMapLayerPlacement(createTestConfig(2048), [
-      3920, 2540,
-    ]);
-    const placement4k = resolveMapLayerPlacement(createTestConfig(4096), [
-      3920, 2540,
-    ]);
+    expect(normalizedFrom2k).toEqual([3920, 2540]);
+    expect(normalizedFrom4k).toEqual([3920, 2540]);
+    expect(toLeafletLatLng(normalizedFrom2k)).toEqual([5652, 3920]);
+    expect(toLeafletLatLng(normalizedFrom4k)).toEqual([5652, 3920]);
 
-    expect(placement2k.baseLeafletBounds).toEqual([
+    const placement2k = resolveMapLayerPlacement(config2k);
+    const placement4k = resolveMapLayerPlacement(config4k);
+    expect(placement2k.baseBounds).toEqual([
       [0, 0],
       [8192, 8192],
     ]);
-    expect(placement2k.pointLatLng).toEqual([5652, 3920]);
     expect(placement2k).toEqual(placement4k);
   });
 });
