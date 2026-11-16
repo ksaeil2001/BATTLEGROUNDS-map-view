@@ -141,7 +141,7 @@ export function recordWheelZoom(
   return {
     ...state,
     pendingUserZoom: true,
-    suppressUntil: Math.max(state.suppressUntil, now + NAVIGATION_COOLDOWN_MS),
+    suppressUntil: withCooldown(state.suppressUntil, true, now),
   };
 }
 
@@ -160,7 +160,7 @@ export function endMapDrag(
   return {
     ...state,
     mapDragging: false,
-    suppressUntil: Math.max(state.suppressUntil, now + NAVIGATION_COOLDOWN_MS),
+    suppressUntil: withCooldown(state.suppressUntil, true, now),
   };
 }
 
@@ -185,7 +185,7 @@ export function endMapMove(
     ...state,
     pendingUserMove: false,
     mapMoving: false,
-    suppressUntil: Math.max(state.suppressUntil, now + NAVIGATION_COOLDOWN_MS),
+    suppressUntil: withCooldown(state.suppressUntil, true, now),
   };
 }
 
@@ -210,7 +210,7 @@ export function endMapZoom(
     ...state,
     pendingUserZoom: false,
     mapZooming: false,
-    suppressUntil: Math.max(state.suppressUntil, now + NAVIGATION_COOLDOWN_MS),
+    suppressUntil: withCooldown(state.suppressUntil, true, now),
   };
 }
 
@@ -223,6 +223,35 @@ export function resetPendingUserNavigation(
     pendingUserMove: false,
     mapZooming: false,
     mapMoving: false,
+  };
+}
+
+/**
+ * Mark an active map navigation gesture (drag, pan, or zoom) across unified handlers.
+ */
+export function beginMapNavigation(state: GestureGuardState): GestureGuardState {
+  return {
+    ...state,
+    pendingUserMove: true,
+    mapMoving: true,
+  };
+}
+
+/**
+ * End an active map navigation gesture and start the post-gesture click cooldown.
+ */
+export function endMapNavigation(
+  state: GestureGuardState,
+  now: number,
+): GestureGuardState {
+  return {
+    ...state,
+    pendingUserMove: false,
+    pendingUserZoom: false,
+    mapDragging: false,
+    mapMoving: false,
+    mapZooming: false,
+    suppressUntil: withCooldown(state.suppressUntil, true, now),
   };
 }
 

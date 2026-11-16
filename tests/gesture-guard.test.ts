@@ -4,10 +4,12 @@ import {
   TOUCH_DRAG_THRESHOLD_PX,
   beginMapDrag,
   beginMapMove,
+  beginMapNavigation,
   beginMapZoom,
   createGestureGuardState,
   endMapDrag,
   endMapMove,
+  endMapNavigation,
   endMapZoom,
   recordTouchEnd,
   recordTouchMove,
@@ -113,5 +115,19 @@ describe('Navigation gesture guard (mobile drag, pinch, and post-gesture cooldow
     atMaxZoom = resetPendingUserNavigation(atMaxZoom);
     atMaxZoom = beginMapZoom(atMaxZoom);
     expect(shouldSuppressSelectionClick(atMaxZoom, 3200)).toBe(false);
+  });
+
+  it('supports unified beginMapNavigation and endMapNavigation lifecycle with cooldown', () => {
+    let state = beginMapNavigation(createGestureGuardState());
+    expect(shouldSuppressSelectionClick(state, 4000)).toBe(true);
+
+    state = endMapNavigation(state, 4050);
+    expect(shouldSuppressSelectionClick(state, 4050)).toBe(true);
+    expect(
+      shouldSuppressSelectionClick(state, 4050 + NAVIGATION_COOLDOWN_MS - 1),
+    ).toBe(true);
+    expect(
+      shouldSuppressSelectionClick(state, 4050 + NAVIGATION_COOLDOWN_MS),
+    ).toBe(false);
   });
 });
