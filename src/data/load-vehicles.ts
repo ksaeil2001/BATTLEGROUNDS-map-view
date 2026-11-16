@@ -132,11 +132,5 @@ export function validateVehicleDataset(
 export function loadPublicVehicles(
   assetMode: MapAssetMode,
 ): FixedVehicleSpawnRecord[] {
-  const verified = getPublicVehicles(validateVehicleDataset(rawVehicles));
-  if (assetMode === 'official') {
-    return verified.filter(
-      (vehicle) => !vehicle.mapImageVersion.startsWith('sample-'),
-    );
-  }
-  return verified;
+  return getPublicVehicles(validateVehicleDataset(rawVehicles), assetMode);
 }

@@ -5,6 +5,7 @@ import {
   type ImageDimensions,
   type LeafletBoundsTuple,
   type LeafletLatLngTuple,
+  type MapAssetMode,
   type MapDatasetConfig,
 } from './types';
 
@@ -72,6 +73,17 @@ export function assertPositiveDimensions({
   ) {
     throw new Error('Image pixel dimensions must be positive finite numbers.');
   }
+}
+
+/**
+ * Check whether a dataset record's mapImageVersion belongs to the active MapAssetMode.
+ */
+export function isRecordCompatibleWithAssetMode(
+  mapImageVersion: string,
+  assetMode: MapAssetMode,
+): boolean {
+  const isSampleRecord = mapImageVersion.startsWith('sample-');
+  return assetMode === 'official' ? !isSampleRecord : isSampleRecord;
 }
 
 /**

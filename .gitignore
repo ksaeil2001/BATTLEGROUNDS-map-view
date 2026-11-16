@@ -6,5 +6,7 @@
 /playwright-report
 /blob-report
 /playwright/.cache
+/.local-assets
+/evidence
 next-env.d.ts
 *.tsbuildinfo

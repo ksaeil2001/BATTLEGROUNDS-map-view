@@ -1,9 +1,14 @@
-import { assertPositiveDimensions, toLeafletLatLng } from './map-coordinates';
+import {
+  assertPositiveDimensions,
+  isRecordCompatibleWithAssetMode,
+  toLeafletLatLng,
+} from './map-coordinates';
 import type {
   BuildingRecord,
   CanonicalPoint,
   ImageDimensions,
   LeafletLatLngTuple,
+  MapAssetMode,
 } from './types';
 
 const SEGMENT_EPSILON = 1e-9;
@@ -77,13 +82,17 @@ export function isPointInPolygon(
 }
 
 /**
- * Filter building records to only those explicitly verified for public view.
+ * Filter building records to only those explicitly verified for public view
+ * and compatible with the active map asset mode.
  */
 export function getPublicBuildings(
   buildings: readonly BuildingRecord[],
+  assetMode: MapAssetMode = 'sample',
 ): BuildingRecord[] {
   return buildings.filter(
-    (building) => building.provenance.verificationStatus === 'verified',
+    (building) =>
+      building.provenance.verificationStatus === 'verified' &&
+      isRecordCompatibleWithAssetMode(building.mapImageVersion, assetMode),
   );
 }
 

@@ -61,12 +61,11 @@ async function waitForStableBoundingBox(locator: Locator): Promise<BoxRect> {
   return stable ?? (await getBoundingBoxOrThrow(locator));
 }
 
-async function expectTargetZoneFocused(
-  page: Page,
+async function expectZoneLocatorFocused(
+  zoneBoundary: Locator,
   initialZoneBox: BoxRect,
   viewport: { width: number; height: number },
 ): Promise<void> {
-  const zoneBoundary = page.locator('.taego-target-zone-boundary');
   await expect
     .poll(async () => {
       const box = await zoneBoundary.boundingBox();
@@ -82,6 +81,18 @@ async function expectTargetZoneFocused(
       );
     })
     .toBe(true);
+}
+
+async function expectTargetZoneFocused(
+  page: Page,
+  initialZoneBox: BoxRect,
+  viewport: { width: number; height: number },
+): Promise<void> {
+  await expectZoneLocatorFocused(
+    page.locator('.taego-target-zone-boundary'),
+    initialZoneBox,
+    viewport,
+  );
 }
 
 async function expectFullMapReset(
@@ -842,6 +853,9 @@ function stopChildProcess(child: ChildProcess): void {
 async function expectPickerAbsent(page: Page): Promise<void> {
   await expect(page.getByTestId('dev-picker-toolbar')).toHaveCount(0);
   await expect(page.getByTestId('dev-picker-toggle-button')).toHaveCount(0);
+  await expect(
+    page.getByTestId('dev-official-preview-toggle-button'),
+  ).toHaveCount(0);
 }
 
 test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
@@ -974,6 +988,281 @@ test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
     }
   });
 
+  test('dev user switches to local 31.2 official map preview, verifies Palace/Terminal overlay alignment without sample leakage, and extracts roof vertices via Picker', async ({
+    browser,
+  }) => {
+    const localAssetDir = path.join(
+      process.cwd(),
+      '.local-assets',
+      'taego-31.2',
+    );
+    const hasLocalOfficialAssets = [
+      'taego-31.2-base-preview.png',
+      'palace-31.2-highres-crop.png',
+      'terminal-31.2-highres-crop.png',
+    ].every((fileName) => fs.existsSync(path.join(localAssetDir, fileName)));
+    test.skip(
+      !hasLocalOfficialAssets,
+      'Local-only 31.2 assets are absent outside developer workstation.',
+    );
+
+    const viewport = { width: 1280, height: 800 };
+    const context = await browser.newContext({ viewport });
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const page = await context.newPage();
+    const runtimeErrors = collectRuntimeErrors(page);
+
+    try {
+      await page.goto('/');
+      await page.getByTestId('map-selection-card').click();
+
+      const devPreviewToggle = page.getByTestId(
+        'dev-official-preview-toggle-button',
+      );
+      await expect(devPreviewToggle).toBeVisible();
+      await expect(devPreviewToggle).toHaveAttribute('aria-pressed', 'false');
+      await expect(devPreviewToggle).toContainText('로컬 31.2 지도 OFF (DEV)');
+
+      // Enable local-only 31.2 official map preview
+      await devPreviewToggle.click();
+      await expect(devPreviewToggle).toHaveAttribute('aria-pressed', 'true');
+      await expect(devPreviewToggle).toContainText('로컬 31.2 지도 ON (DEV)');
+      await expect(page.getByTestId('map-status-bar')).toContainText('31.2');
+      await expect(page.getByTestId('map-status-bar')).toContainText(
+        '공개 배포 권리 미확인',
+      );
+
+      // Verify official base preview (2048x2048) and both Palace/Terminal crops (600x550, 650x480) load cleanly
+      const baseOverlay = page.locator('.taego-base-overlay');
+      const palaceCrop = page.locator(
+        'img.taego-highres-overlay[src*="palace-31.2-highres-crop.png"]',
+      );
+      const terminalCrop = page.locator(
+        'img.taego-highres-overlay[src*="terminal-31.2-highres-crop.png"]',
+      );
+
+      await expect(baseOverlay).toHaveCount(1);
+      await expect(palaceCrop).toHaveCount(1);
+      await expect(terminalCrop).toHaveCount(1);
+
+      await expect
+        .poll(async () =>
+          baseOverlay.evaluate((img) => {
+            const el = img as HTMLImageElement;
+            return el.complete && el.naturalWidth === 2048 && el.naturalHeight === 2048;
+          }),
+        )
+        .toBe(true);
+      await expect
+        .poll(async () =>
+          palaceCrop.evaluate((img) => {
+            const el = img as HTMLImageElement;
+            return el.complete && el.naturalWidth === 600 && el.naturalHeight === 550;
+          }),
+        )
+        .toBe(true);
+      await expect
+        .poll(async () =>
+          terminalCrop.evaluate((img) => {
+            const el = img as HTMLImageElement;
+            return el.complete && el.naturalWidth === 650 && el.naturalHeight === 480;
+          }),
+        )
+        .toBe(true);
+
+      // Sample buildings and sample vehicles must NOT appear on the 31.2 preview
+      await expect(page.locator('.taego-roof-footprint')).toHaveCount(0);
+      await page.getByTestId('vehicle-layer-toggle-button').click();
+      await expect(page.locator('.taego-vehicle-marker-icon')).toHaveCount(0);
+      await page.getByTestId('vehicle-layer-toggle-button').click();
+
+      const palaceZoneBoundary = page
+        .locator('.taego-target-zone-boundary')
+        .nth(0);
+      const terminalZoneBoundary = page
+        .locator('.taego-target-zone-boundary')
+        .nth(1);
+      const initialPalaceZoneBox =
+        await getBoundingBoxOrThrow(palaceZoneBoundary);
+      const initialTerminalZoneBox =
+        await getBoundingBoxOrThrow(terminalZoneBoundary);
+
+      // 1) Jump to Palace [[2750, 3400], [3350, 3950]] and verify high-res overlay canonical alignment
+      await page.getByTestId('target-zone-jump-button').click();
+      await expectZoneLocatorFocused(
+        palaceZoneBoundary,
+        initialPalaceZoneBox,
+        viewport,
+      );
+      await waitForStableBoundingBox(baseOverlay);
+      await expect(palaceCrop).toHaveCSS('opacity', '1');
+
+      const baseBoxAtPalace = await waitForStableBoundingBox(baseOverlay);
+      const palaceBox = await waitForStableBoundingBox(palaceCrop);
+      expect(
+        Math.abs((palaceBox.x - baseBoxAtPalace.x) / baseBoxAtPalace.width - 2750 / 8192),
+      ).toBeLessThan(0.005);
+      expect(
+        Math.abs((palaceBox.y - baseBoxAtPalace.y) / baseBoxAtPalace.height - 3400 / 8192),
+      ).toBeLessThan(0.005);
+      expect(
+        Math.abs(palaceBox.width / baseBoxAtPalace.width - 600 / 8192),
+      ).toBeLessThan(0.005);
+      expect(
+        Math.abs(palaceBox.height / baseBoxAtPalace.height - 550 / 8192),
+      ).toBeLessThan(0.005);
+
+      // 2) Use DevCoordinatePicker over 3 adjacent Palace candidate roofs to verify integer canonical extraction
+      const pickerToggle = page.getByTestId('dev-picker-toggle-button');
+      await pickerToggle.click();
+      await expect(pickerToggle).toHaveAttribute('aria-pressed', 'true');
+
+      const adjacentPalaceCandidates: readonly (readonly [number, number][])[] = [
+        // 중앙 정전
+        [
+          [3049, 3602],
+          [3084, 3602],
+          [3084, 3635],
+          [3049, 3635],
+        ],
+        // 서측 ㅏ자 내행랑 (오목 다각형 일부 꼭짓점)
+        [
+          [3006, 3569],
+          [3016, 3569],
+          [3016, 3582],
+          [3053, 3582],
+        ],
+        // 북측 내전
+        [
+          [3056, 3541],
+          [3081, 3541],
+          [3081, 3565],
+          [3056, 3565],
+        ],
+      ];
+
+      for (const candidateVertices of adjacentPalaceCandidates) {
+        for (const vertex of candidateVertices) {
+          const pt = await canonicalToClientPoint(baseOverlay, vertex);
+          await page.mouse.click(pt.x, pt.y);
+        }
+
+        await expect(page.getByTestId('dev-picker-point-count')).toContainText(
+          `${candidateVertices.length}개 점`,
+        );
+        await page.getByTestId('dev-picker-copy-button').click();
+        const copiedText = await page.evaluate(() =>
+          navigator.clipboard.readText(),
+        );
+        const parsed = JSON.parse(copiedText) as [number, number][];
+        expect(parsed).toHaveLength(candidateVertices.length);
+        candidateVertices.forEach(([expectedX, expectedY], idx) => {
+          expect(Number.isInteger(parsed[idx]![0])).toBe(true);
+          expect(Number.isInteger(parsed[idx]![1])).toBe(true);
+          expect(Math.abs(parsed[idx]![0] - expectedX)).toBeLessThanOrEqual(5);
+          expect(Math.abs(parsed[idx]![1] - expectedY)).toBeLessThanOrEqual(5);
+        });
+
+        await page.getByTestId('dev-picker-cancel-button').click();
+      }
+
+      await pickerToggle.click();
+
+      // 3) Jump to Terminal [[4300, 3400], [4950, 3880]] and verify high-res overlay canonical alignment
+      await page.getByTestId('target-zone-jump-button-terminal').click();
+      await expectZoneLocatorFocused(
+        terminalZoneBoundary,
+        initialTerminalZoneBox,
+        viewport,
+      );
+      await waitForStableBoundingBox(baseOverlay);
+      await expect(terminalCrop).toHaveCSS('opacity', '1');
+
+      const baseBoxAtTerminal = await waitForStableBoundingBox(baseOverlay);
+      const terminalBox = await waitForStableBoundingBox(terminalCrop);
+      expect(
+        Math.abs((terminalBox.x - baseBoxAtTerminal.x) / baseBoxAtTerminal.width - 4300 / 8192),
+      ).toBeLessThan(0.005);
+      expect(
+        Math.abs((terminalBox.y - baseBoxAtTerminal.y) / baseBoxAtTerminal.height - 3400 / 8192),
+      ).toBeLessThan(0.005);
+      expect(
+        Math.abs(terminalBox.width / baseBoxAtTerminal.width - 650 / 8192),
+      ).toBeLessThan(0.005);
+      expect(
+        Math.abs(terminalBox.height / baseBoxAtTerminal.height - 480 / 8192),
+      ).toBeLessThan(0.005);
+
+      // 4) Switch back to sample mode cleanly
+      await devPreviewToggle.click();
+      await expect(devPreviewToggle).toHaveAttribute('aria-pressed', 'false');
+      await expect(page.locator('.taego-roof-footprint')).toHaveCount(3);
+
+      // 5) Mobile (390x844) navigation check on local 31.2 official map preview
+      const mobileContext = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      });
+      try {
+        const mobilePage = await mobileContext.newPage();
+        const mobileCdp = await mobileContext.newCDPSession(mobilePage);
+        await mobilePage.goto('/');
+        await mobilePage.getByTestId('map-selection-card').tap();
+        await mobilePage.getByTestId('dev-official-preview-toggle-button').tap();
+        await expect(
+          mobilePage.getByTestId('dev-official-preview-toggle-button'),
+        ).toHaveAttribute('aria-pressed', 'true');
+
+        const hasOverflow = await mobilePage.evaluate(
+          () =>
+            document.documentElement.scrollWidth >
+            document.documentElement.clientWidth,
+        );
+        expect(hasOverflow).toBe(false);
+
+        const mobileBase = mobilePage.locator('.taego-base-overlay');
+        await expect
+          .poll(async () =>
+            mobileBase.evaluate(
+              (img) => (img as HTMLImageElement).naturalWidth === 2048,
+            ),
+          )
+          .toBe(true);
+
+        const initialMobileBaseBox = await getBoundingBoxOrThrow(mobileBase);
+        await dispatchTouchDrag(mobileCdp, { x: 220, y: 440 }, { x: -16, y: -14 }, 6);
+        await expect
+          .poll(async () => {
+            const afterBox = await mobileBase.boundingBox();
+            return afterBox
+              ? afterBox.x < initialMobileBaseBox.x - 30 &&
+                  afterBox.y < initialMobileBaseBox.y - 30
+              : false;
+          })
+          .toBe(true);
+
+        const mobilePalaceZone = mobilePage
+          .locator('.taego-target-zone-boundary')
+          .nth(0);
+        const initialMobilePalaceBox =
+          await getBoundingBoxOrThrow(mobilePalaceZone);
+        await mobilePage.getByTestId('target-zone-jump-button').tap();
+        await expectZoneLocatorFocused(
+          mobilePalaceZone,
+          initialMobilePalaceBox,
+          { width: 390, height: 844 },
+        );
+      } finally {
+        await mobileContext.close();
+      }
+
+      expect(runtimeErrors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
   test('production build tree-shakes Picker out of .next/static and next start denies all access on desktop and mobile', async ({
     browser,
   }) => {
@@ -1010,6 +1299,10 @@ test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
       '좌표 추출기',
       '점 되돌리기',
       'DevCoordinatePicker',
+      'dev-official-preview-toggle-button',
+      '로컬 31.2 지도',
+      'dev-local-assets',
+      'taego-31.2-base-preview',
     ];
 
     for (const filePath of staticFiles) {
@@ -1113,6 +1406,7 @@ test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
         await expect(mobilePage.getByTestId('building-card')).toHaveCount(0);
 
         // Clean single tap after cooldown opens BuildingCard
+        await waitForStableBoundingBox(mobileBaseOverlay);
         await mobilePage.waitForTimeout(220);
         const settledP1 = await canonicalToClientPoint(mobileBaseOverlay, [
           3760, 2475,
@@ -1125,11 +1419,19 @@ test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
         await mobileContext.close();
       }
 
-      // Dedicated dev routes must not exist in production
+      // Dedicated dev routes and dev-local-assets API must not exist in production
       const devRouteRes = await fetch('http://127.0.0.1:3101/dev');
       const pickerRouteRes = await fetch('http://127.0.0.1:3101/picker');
+      const devAssetBaseRes = await fetch(
+        'http://127.0.0.1:3101/api/dev-local-assets/taego-31.2-base-preview.png',
+      );
+      const devAssetPalaceRes = await fetch(
+        'http://127.0.0.1:3101/api/dev-local-assets/palace-31.2-highres-crop.png',
+      );
       expect(devRouteRes.status).toBe(404);
       expect(pickerRouteRes.status).toBe(404);
+      expect(devAssetBaseRes.status).toBe(404);
+      expect(devAssetPalaceRes.status).toBe(404);
 
       expect(runtimeErrors).toEqual([]);
     } finally {

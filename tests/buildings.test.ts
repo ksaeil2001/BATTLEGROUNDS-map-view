@@ -264,6 +264,23 @@ describe('Static buildings.json dataset loader and runtime schema validation', (
     expect(palace03?.attributes.entrances.status).toBe('unverified');
   });
 
+  it('excludes sample-* buildings when assetMode is official and excludes non-sample buildings when assetMode is sample', () => {
+    const officialBuilding = makeSampleBuilding({
+      id: 'palace-official-01',
+      mapImageVersion: '31.2',
+      footprint: PALACE_02_FOOTPRINT,
+    });
+    const mixedBuildings = [...SAMPLE_BUILDINGS, officialBuilding];
+
+    expect(
+      getPublicBuildings(mixedBuildings, 'official').map((b) => b.id),
+    ).toEqual(['palace-official-01']);
+    expect(
+      getPublicBuildings(mixedBuildings, 'sample').map((b) => b.id),
+    ).toEqual(['palace-01', 'palace-02', 'palace-03']);
+    expect(loadPublicBuildings('official')).toEqual([]);
+  });
+
   it('rejects duplicate building IDs', () => {
     const duplicated = [
       makeSampleBuilding({ id: 'palace-dup', footprint: PALACE_01_FOOTPRINT }),

@@ -85,6 +85,22 @@ describe('FixedVehicleSpawnPoint filtering and Canonical Pixel Space placement',
     ]);
   });
 
+  it('filters verified vehicles symmetrically between sample and official assetMode', () => {
+    const officialVehicle = makeSampleVehicle({
+      id: 'palace-official-vehicle-01',
+      mapImageVersion: '31.2',
+      coord: [3160, 3840],
+    });
+    const mixedVehicles = [...SAMPLE_VEHICLES, officialVehicle];
+
+    expect(
+      getPublicVehicles(mixedVehicles, 'official').map((v) => v.id),
+    ).toEqual(['palace-official-vehicle-01']);
+    expect(
+      getPublicVehicles(mixedVehicles, 'sample').map((v) => v.id),
+    ).toEqual(['palace-vehicle-01', 'taego-wide-vehicle-01']);
+  });
+
   it('maps verified vehicle coordinates to identical Leaflet CRS.Simple tuples across 2048x2048 and 4096x4096 base images', () => {
     const publicVehicles = getPublicVehicles(SAMPLE_VEHICLES);
     const config2k = structuredClone(loadPublicMapDatasetConfig());

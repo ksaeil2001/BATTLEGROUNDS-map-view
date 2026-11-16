@@ -23,6 +23,7 @@ const DynamicLeafletMapCanvas = dynamic(() => import('./LeafletMapCanvas'), {
 
 interface TaegoMapShellProps {
   maps: readonly MapDatasetConfig[];
+  devOfficialPreviewConfig?: MapDatasetConfig | null;
   buildings: readonly BuildingRecord[];
   vehicles: readonly FixedVehicleSpawnRecord[];
 }
@@ -46,29 +47,38 @@ const ASSET_MODE_COPY: Record<
 
 export default function TaegoMapShell({
   maps,
+  devOfficialPreviewConfig = null,
   buildings,
   vehicles,
 }: TaegoMapShellProps) {
   const [selectedMapId, setSelectedMapId] = useState<
     MapDatasetConfig['mapId'] | null
   >(null);
+  const [isDevOfficialPreview, setIsDevOfficialPreview] = useState(false);
   const [selection, setSelection] = useState<MapSelection>(null);
   const [isVehicleLayerVisible, setIsVehicleLayerVisible] = useState(false);
   const [cameraCommand, setCameraCommand] = useState<MapCameraCommand | null>(
     null,
   );
 
+  const selectedMap =
+    maps.find((candidate) => candidate.mapId === selectedMapId) ?? null;
+  const activeConfig =
+    process.env.NODE_ENV === 'development' &&
+    selectedMap !== null &&
+    isDevOfficialPreview &&
+    devOfficialPreviewConfig
+      ? devOfficialPreviewConfig
+      : selectedMap;
+
   const publicBuildings = useMemo(
-    () => getPublicBuildings(buildings),
-    [buildings],
+    () => getPublicBuildings(buildings, activeConfig?.assetMode ?? 'sample'),
+    [buildings, activeConfig?.assetMode],
   );
   const publicVehicles = useMemo(
-    () => getPublicVehicles(vehicles),
-    [vehicles],
+    () => getPublicVehicles(vehicles, activeConfig?.assetMode ?? 'sample'),
+    [vehicles, activeConfig?.assetMode],
   );
-  const activeConfig =
-    maps.find((candidate) => candidate.mapId === selectedMapId) ?? null;
-  const activePrimaryZone = activeConfig?.targetZones[0];
 
   const resolveZoneName = useCallback(
     (zoneId: string) =>
@@ -112,16 +122,13 @@ export default function TaegoMapShell({
     }));
   }, []);
 
-  const handleFocusTargetZone = useCallback(() => {
-    if (!activePrimaryZone) {
-      return;
-    }
+  const handleFocusTargetZone = useCallback((zoneId: string) => {
     setCameraCommand((prev) => ({
       id: (prev?.id ?? 0) + 1,
       type: 'focus-zone',
-      zoneId: activePrimaryZone.id,
+      zoneId,
     }));
-  }, [activePrimaryZone]);
+  }, []);
 
   if (activeConfig === null) {
     return (
@@ -199,6 +206,11 @@ export default function TaegoMapShell({
   }
 
   const activeAssetCopy = ASSET_MODE_COPY[activeConfig.assetMode];
+  const activeNotice =
+    process.env.NODE_ENV === 'development' &&
+    !activeConfig.baseImage.rightsClearedForPublicDeploy
+      ? '개발 전용 로컬 31.2 미리보기 · 공개 배포 권리 미확인 (Git/번들 제외)'
+      : activeAssetCopy.notice;
 
   return (
     <main className="taego-viewer-screen" data-testid="map-viewer-screen">
@@ -209,6 +221,7 @@ export default function TaegoMapShell({
           data-testid="back-to-map-list-button"
           onClick={() => {
             setSelectedMapId(null);
+            setIsDevOfficialPreview(false);
             setSelection(null);
             setIsVehicleLayerVisible(false);
             setCameraCommand(null);
@@ -226,19 +239,51 @@ export default function TaegoMapShell({
           전체 보기(Reset)
         </button>
 
-        {activePrimaryZone ? (
-          <button
-            type="button"
-            className="taego-control-btn taego-control-btn-accent"
-            data-testid="target-zone-jump-button"
-            onClick={handleFocusTargetZone}
-          >
-            등록 구역: {activePrimaryZone.displayName} · 이동
-          </button>
-        ) : null}
+        {activeConfig.targetZones.map((zone, index) => {
+          const zoneLabelPrefix =
+            activeConfig.baseImage.rightsClearedForPublicDeploy
+              ? '등록 구역'
+              : '후보 구역';
+          return (
+            <button
+              key={zone.id}
+              type="button"
+              className="taego-control-btn taego-control-btn-accent"
+              data-testid={
+                index === 0
+                  ? 'target-zone-jump-button'
+                  : `target-zone-jump-button-${zone.id}`
+              }
+              onClick={() => handleFocusTargetZone(zone.id)}
+            >
+              {zoneLabelPrefix}: {zone.displayName} · 이동
+            </button>
+          );
+        })}
       </div>
 
       <div className="taego-layer-controls" data-testid="map-layer-controls">
+        {process.env.NODE_ENV === 'development' && devOfficialPreviewConfig ? (
+          <button
+            type="button"
+            className={`taego-control-btn ${isDevOfficialPreview ? 'taego-control-btn-active' : ''}`}
+            data-testid="dev-official-preview-toggle-button"
+            aria-pressed={isDevOfficialPreview}
+            onClick={() => {
+              setIsDevOfficialPreview((prev) => !prev);
+              setSelection(null);
+              setCameraCommand((prev) => ({
+                id: (prev?.id ?? 0) + 1,
+                type: 'reset',
+              }));
+            }}
+          >
+            {isDevOfficialPreview
+              ? '로컬 31.2 지도 ON (DEV)'
+              : '로컬 31.2 지도 OFF (DEV)'}
+          </button>
+        ) : null}
+
         <button
           type="button"
           className={`taego-control-btn ${isVehicleLayerVisible ? 'taego-control-btn-active' : ''}`}
@@ -252,6 +297,7 @@ export default function TaegoMapShell({
       </div>
 
       <DynamicLeafletMapCanvas
+        key={activeConfig.assetMode}
         config={activeConfig}
         buildings={publicBuildings}
         vehicles={publicVehicles}
@@ -279,7 +325,7 @@ export default function TaegoMapShell({
       ) : null}
 
       <footer className="taego-status-bar" data-testid="map-status-bar">
-        <span>{activeAssetCopy.notice}</span>
+        <span>{activeNotice}</span>
         <span>
           {activeAssetCopy.badge} ({activeConfig.baseImage.mapImageVersion})
         </span>

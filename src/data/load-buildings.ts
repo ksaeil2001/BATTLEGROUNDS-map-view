@@ -13,6 +13,7 @@ import type {
   BuildingEntrancesValue,
   BuildingExteriorImage,
   BuildingRecord,
+  MapAssetMode,
   RooftopAccessKind,
   RooftopAccessValue,
   VerifiableField,
@@ -219,8 +220,10 @@ export function validateBuildingDataset(candidate: unknown): BuildingRecord[] {
 }
 
 /**
- * Server-side loader returning only verified buildings for the public viewer.
+ * Server-side loader returning only verified buildings compatible with the active asset mode.
  */
-export function loadPublicBuildings(): BuildingRecord[] {
-  return getPublicBuildings(validateBuildingDataset(rawBuildings));
+export function loadPublicBuildings(
+  assetMode: MapAssetMode = 'sample',
+): BuildingRecord[] {
+  return getPublicBuildings(validateBuildingDataset(rawBuildings), assetMode);
 }

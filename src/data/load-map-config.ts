@@ -90,11 +90,37 @@ function validateTargetZone(value: unknown, index: number): TargetZone {
   };
 }
 
-/**
- * Validate an unknown static MapDatasetConfig input at runtime and enforce
- * the public deployment rights gate for public map imagery.
- */
-export function validateMapDatasetConfig(candidate: unknown): MapDatasetConfig {
+export const DEV_LOCAL_ASSET_PREFIX = '/api/dev-local-assets/' as const;
+
+export const DEV_LOCAL_ASSET_FILES = {
+  basePreview: 'taego-31.2-base-preview.png',
+  palaceCrop: 'palace-31.2-highres-crop.png',
+  terminalCrop: 'terminal-31.2-highres-crop.png',
+} as const;
+
+const PALACE_31_2_CANDIDATE_BOUNDS = [
+  [2750, 3400],
+  [3350, 3950],
+] as const;
+
+const TERMINAL_31_2_CANDIDATE_BOUNDS = [
+  [4300, 3400],
+  [4950, 3880],
+] as const;
+
+function assertDevLocalAssetPath(imagePath: string, label: string): string {
+  if (!imagePath.startsWith(DEV_LOCAL_ASSET_PREFIX)) {
+    throw new Error(
+      `Invalid ${label}: dev preview images must start with "${DEV_LOCAL_ASSET_PREFIX}".`,
+    );
+  }
+  return imagePath;
+}
+
+function validateMapDatasetConfigInternal(
+  candidate: unknown,
+  allowUnverifiedDevPreview: boolean,
+): MapDatasetConfig {
   if (!isRecord(candidate)) {
     throw new Error('Invalid MapDatasetConfig: expected an object.');
   }
@@ -122,17 +148,32 @@ export function validateMapDatasetConfig(candidate: unknown): MapDatasetConfig {
     throw new Error('Invalid baseImage: expected an object.');
   }
 
-  if (candidate.baseImage.rightsClearedForPublicDeploy !== true) {
+  const rightsCleared = candidate.baseImage.rightsClearedForPublicDeploy;
+  if (allowUnverifiedDevPreview) {
+    if (candidate.assetMode !== 'official') {
+      throw new Error('Dev official preview requires assetMode "official".');
+    }
+    if (typeof rightsCleared !== 'boolean') {
+      throw new Error(
+        'Invalid baseImage.rightsClearedForPublicDeploy: expected boolean.',
+      );
+    }
+  } else if (rightsCleared !== true) {
     throw new Error(
       'Map baseImage failed rightsClearedForPublicDeploy gate for public deployment.',
     );
   }
 
+  const rawBaseImagePath = assertNonEmptyString(
+    candidate.baseImage.imagePath,
+    'baseImage.imagePath',
+  );
+  const baseImagePath = allowUnverifiedDevPreview
+    ? assertDevLocalAssetPath(rawBaseImagePath, 'baseImage.imagePath')
+    : rawBaseImagePath;
+
   const baseImage = {
-    imagePath: assertNonEmptyString(
-      candidate.baseImage.imagePath,
-      'baseImage.imagePath',
-    ),
+    imagePath: baseImagePath,
     mapImageVersion: assertNonEmptyString(
       candidate.baseImage.mapImageVersion,
       'baseImage.mapImageVersion',
@@ -145,15 +186,22 @@ export function validateMapDatasetConfig(candidate: unknown): MapDatasetConfig {
       candidate.baseImage.pixelHeight,
       'baseImage.pixelHeight',
     ),
-    rightsClearedForPublicDeploy: true,
+    rightsClearedForPublicDeploy: rightsCleared,
   };
 
   if (!Array.isArray(candidate.highResOverlays)) {
     throw new Error('Invalid highResOverlays: expected an array.');
   }
-  const highResOverlays = candidate.highResOverlays.map((overlay, index) =>
-    validateOverlayLayer(overlay, index),
-  );
+  const highResOverlays = candidate.highResOverlays.map((overlay, index) => {
+    const validatedOverlay = validateOverlayLayer(overlay, index);
+    if (allowUnverifiedDevPreview) {
+      assertDevLocalAssetPath(
+        validatedOverlay.imagePath,
+        `highResOverlays[${index}].imagePath`,
+      );
+    }
+    return validatedOverlay;
+  });
 
   if (
     !Array.isArray(candidate.targetZones) ||
@@ -174,6 +222,89 @@ export function validateMapDatasetConfig(candidate: unknown): MapDatasetConfig {
     highResOverlays,
     targetZones,
   };
+}
+
+/**
+ * Validate an unknown static MapDatasetConfig input at runtime and enforce
+ * the public deployment rights gate for public map imagery.
+ */
+export function validateMapDatasetConfig(candidate: unknown): MapDatasetConfig {
+  return validateMapDatasetConfigInternal(candidate, false);
+}
+
+/**
+ * Validate a development-only official Taego preview config served strictly
+ * from local-only assets outside public/ and production builds.
+ */
+export function validateDevPreviewMapDatasetConfig(
+  candidate: unknown,
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+): MapDatasetConfig {
+  if (nodeEnv !== 'development') {
+    throw new Error(
+      'Dev-only official map preview is restricted to development environment.',
+    );
+  }
+  return validateMapDatasetConfigInternal(candidate, true);
+}
+
+/**
+ * Build and validate the local-only official 31.2 Taego preview dataset config
+ * for side-by-side Palace/Terminal coordinate verification in development.
+ */
+export function createDevOfficialPreviewDatasetConfig(
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+): MapDatasetConfig {
+  return validateDevPreviewMapDatasetConfig(
+    {
+      mapId: 'taego',
+      displayName: '태이고 (Taego)',
+      canonicalSize: CANONICAL_MAP_SIZE,
+      assetMode: 'official',
+      baseImage: {
+        imagePath: `${DEV_LOCAL_ASSET_PREFIX}${DEV_LOCAL_ASSET_FILES.basePreview}`,
+        mapImageVersion: '31.2',
+        pixelWidth: 2048,
+        pixelHeight: 2048,
+        rightsClearedForPublicDeploy: false,
+      },
+      highResOverlays: [
+        {
+          id: 'palace-31.2-crop',
+          label: '궁전 (Palace) 31.2 고해상도 영역',
+          imagePath: `${DEV_LOCAL_ASSET_PREFIX}${DEV_LOCAL_ASSET_FILES.palaceCrop}`,
+          mapImageVersion: '31.2',
+          bounds: PALACE_31_2_CANDIDATE_BOUNDS,
+          minDisplayZoom: -2,
+        },
+        {
+          id: 'terminal-31.2-crop',
+          label: '터미널 (Terminal) 31.2 고해상도 영역',
+          imagePath: `${DEV_LOCAL_ASSET_PREFIX}${DEV_LOCAL_ASSET_FILES.terminalCrop}`,
+          mapImageVersion: '31.2',
+          bounds: TERMINAL_31_2_CANDIDATE_BOUNDS,
+          minDisplayZoom: -2,
+        },
+      ],
+      targetZones: [
+        {
+          id: 'palace',
+          displayName: '궁전 (Palace)',
+          bounds: PALACE_31_2_CANDIDATE_BOUNDS,
+          pilotReady: false,
+          verifiedGamePatch: 'unverified',
+        },
+        {
+          id: 'terminal',
+          displayName: '터미널 (Terminal)',
+          bounds: TERMINAL_31_2_CANDIDATE_BOUNDS,
+          pilotReady: false,
+          verifiedGamePatch: 'unverified',
+        },
+      ],
+    },
+    nodeEnv,
+  );
 }
 
 /**

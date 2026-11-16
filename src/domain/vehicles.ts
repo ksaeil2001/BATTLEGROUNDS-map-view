@@ -1,8 +1,13 @@
-import { assertPositiveDimensions, toLeafletLatLng } from './map-coordinates';
+import {
+  assertPositiveDimensions,
+  isRecordCompatibleWithAssetMode,
+  toLeafletLatLng,
+} from './map-coordinates';
 import type {
   FixedVehicleSpawnRecord,
   ImageDimensions,
   LeafletLatLngTuple,
+  MapAssetMode,
   VehicleSpawnType,
 } from './types';
 
@@ -13,13 +18,17 @@ export interface VehicleSpawnPlacement {
 }
 
 /**
- * Filter fixed vehicle spawn records to only those verified for public view.
+ * Filter fixed vehicle spawn records to only those verified for public view
+ * and compatible with the active map asset mode.
  */
 export function getPublicVehicles(
   vehicles: readonly FixedVehicleSpawnRecord[],
+  assetMode: MapAssetMode = 'sample',
 ): FixedVehicleSpawnRecord[] {
   return vehicles.filter(
-    (vehicle) => vehicle.provenance.verificationStatus === 'verified',
+    (vehicle) =>
+      vehicle.provenance.verificationStatus === 'verified' &&
+      isRecordCompatibleWithAssetMode(vehicle.mapImageVersion, assetMode),
   );
 }
 
