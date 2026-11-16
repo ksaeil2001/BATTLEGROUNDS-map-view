@@ -203,7 +203,16 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  max-width: calc(100vw - 24px);
+  max-width: calc(100vw - 148px);
+}
+
+.taego-layer-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1060;
+  display: flex;
+  gap: 8px;
 }
 
 .taego-control-btn {
@@ -231,6 +240,43 @@ body {
 .taego-control-btn-accent {
   border-color: rgba(245, 158, 11, 0.5);
   color: #fde68a;
+}
+
+.taego-control-btn-active {
+  border-color: #38bdf8;
+  background: rgba(14, 116, 144, 0.88);
+  color: #f0f9ff;
+}
+
+.taego-vehicle-marker-icon {
+  background: transparent;
+  border: none;
+}
+
+.taego-vehicle-marker-icon:focus {
+  outline: none;
+}
+
+.taego-vehicle-marker-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.92);
+  color: #38bdf8;
+  border: 2px solid #38bdf8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  transition: transform 120ms ease, border-color 120ms ease,
+    background-color 120ms ease, color 120ms ease;
+}
+
+.taego-vehicle-marker-icon[data-selected='true'] .taego-vehicle-marker-badge {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #fbbf24;
+  transform: scale(1.14);
 }
 
 .taego-status-bar {
@@ -266,11 +312,11 @@ body {
 
 .taego-building-card {
   position: absolute;
-  top: 12px;
+  top: 58px;
   right: 12px;
   z-index: 1050;
   width: 340px;
-  max-height: calc(100dvh - 72px);
+  max-height: calc(100dvh - 118px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -399,6 +445,12 @@ body {
   margin: 0;
   font-size: 12px;
   color: #94a3b8;
+}
+
+.taego-vehicle-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .taego-building-facts {

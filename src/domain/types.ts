@@ -110,3 +110,25 @@ export interface BuildingRecord {
   provenance: VerificationRecord;
   attributes: BuildingAttributes;
 }
+
+export type VehicleGameMode =
+  | 'normal'
+  | 'ranked'
+  | 'esports'
+  | 'all-verified';
+
+export type VehicleSpawnType = 'garage' | 'fixed-spot';
+
+export type VehicleZoneScope = 'taego-wide' | (string & {});
+
+export interface FixedVehicleSpawnRecord {
+  id: string;
+  zoneId: VehicleZoneScope;
+  coord: CanonicalPoint;
+  mapImageVersion: string;
+  gameMode: VehicleGameMode;
+  spawnType: VehicleSpawnType;
+  vehicleTypes: readonly string[];
+  notes?: string;
+  provenance: VerificationRecord;
+}

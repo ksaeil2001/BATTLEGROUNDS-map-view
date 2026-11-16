@@ -1,0 +1,49 @@
+[
+  {
+    "id": "palace-vehicle-01",
+    "zoneId": "palace",
+    "coord": [4260, 2600],
+    "mapImageVersion": "sample-v1",
+    "gameMode": "all-verified",
+    "spawnType": "garage",
+    "vehicleTypes": ["포니 쿠페", "사륜 차량"],
+    "notes": "샘플 지도 기능 검증용 동측 차고지 고정 스폰 지점 (실제 인게임 데이터 아님)",
+    "provenance": {
+      "verificationStatus": "verified",
+      "verificationSource": "자체 제작 샘플 지도(sample-v1) 차량 레이어 검증 기준",
+      "verifiedGamePatch": "sample-v1",
+      "verifiedAt": "2026-11-16"
+    }
+  },
+  {
+    "id": "taego-wide-vehicle-01",
+    "zoneId": "taego-wide",
+    "coord": [3680, 2750],
+    "mapImageVersion": "sample-v1",
+    "gameMode": "normal",
+    "spawnType": "fixed-spot",
+    "vehicleTypes": ["포터", "다시야"],
+    "notes": "샘플 지도 기능 검증용 도로변 고정 스팟 (실제 인게임 데이터 아님)",
+    "provenance": {
+      "verificationStatus": "verified",
+      "verificationSource": "자체 제작 샘플 지도(sample-v1) 전역 도로 스폰 검증 기준",
+      "verifiedGamePatch": "sample-v1",
+      "verifiedAt": "2026-11-16"
+    }
+  },
+  {
+    "id": "palace-vehicle-unverified-01",
+    "zoneId": "palace",
+    "coord": [4180, 2900],
+    "mapImageVersion": "sample-v1",
+    "gameMode": "ranked",
+    "spawnType": "fixed-spot",
+    "vehicleTypes": ["미확인 차량"],
+    "provenance": {
+      "verificationStatus": "unverified",
+      "verificationSource": "현장 대조 대기",
+      "verifiedGamePatch": "unverified",
+      "verifiedAt": "2026-11-16"
+    }
+  }
+]

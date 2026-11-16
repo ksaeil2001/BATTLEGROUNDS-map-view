@@ -11,17 +11,30 @@ import {
   resolveMapLayerPlacement,
   toCanonicalPixel,
 } from '@/domain/map-coordinates';
-import type { BuildingRecord, MapDatasetConfig } from '@/domain/types';
+import type {
+  BuildingRecord,
+  FixedVehicleSpawnRecord,
+  MapDatasetConfig,
+  VehicleSpawnType,
+} from '@/domain/types';
+import { resolveVehicleSpawnPlacements } from '@/domain/vehicles';
 
 export type MapCameraCommand =
   | { id: number; type: 'reset' }
   | { id: number; type: 'focus-zone'; zoneId: string };
 
+export type MapSelection =
+  | { kind: 'building'; id: string }
+  | { kind: 'vehicle'; id: string }
+  | null;
+
 interface LeafletMapCanvasProps {
   config: MapDatasetConfig;
   buildings: readonly BuildingRecord[];
-  selectedBuildingId: string | null;
-  onSelectBuilding: (buildingId: string | null) => void;
+  vehicles: readonly FixedVehicleSpawnRecord[];
+  isVehicleLayerVisible: boolean;
+  selection: MapSelection;
+  onSelect: (selection: MapSelection) => void;
   cameraCommand: MapCameraCommand | null;
 }
 
@@ -54,28 +67,54 @@ function applyFootprintSelectionState(
   }
 }
 
+function createVehicleDivIcon(spawnType: VehicleSpawnType): L.DivIcon {
+  const glyph =
+    spawnType === 'garage'
+      ? '<rect x="5" y="7" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 17v-5h8v5" fill="none" stroke="currentColor" stroke-width="1.6"/>'
+      : '<circle cx="12" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/>';
+
+  return L.divIcon({
+    className: 'taego-vehicle-marker-icon',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    html: `<span class="taego-vehicle-marker-badge"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">${glyph}</svg></span>`,
+  });
+}
+
 export default function LeafletMapCanvas({
   config,
   buildings,
-  selectedBuildingId,
-  onSelectBuilding,
+  vehicles,
+  isVehicleLayerVisible,
+  selection,
+  onSelect,
   cameraCommand,
 }: LeafletMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const polygonLayersRef = useRef<Map<string, L.Polygon>>(new Map());
+  const vehicleMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const buildingsRef = useRef(buildings);
-  const onSelectBuildingRef = useRef(onSelectBuilding);
-  const selectedBuildingIdRef = useRef(selectedBuildingId);
+  const selectionRef = useRef(selection);
+  const onSelectRef = useRef(onSelect);
 
   buildingsRef.current = buildings;
-  onSelectBuildingRef.current = onSelectBuilding;
-  selectedBuildingIdRef.current = selectedBuildingId;
+  selectionRef.current = selection;
+  onSelectRef.current = onSelect;
+
+  const selectedBuildingId =
+    selection?.kind === 'building' ? selection.id : null;
+  const selectedVehicleId =
+    selection?.kind === 'vehicle' ? selection.id : null;
 
   const placement = useMemo(() => resolveMapLayerPlacement(config), [config]);
   const footprintPlacements = useMemo(
     () => resolveBuildingFootprintPlacements(buildings, config.baseImage),
     [buildings, config.baseImage],
+  );
+  const vehiclePlacements = useMemo(
+    () => resolveVehicleSpawnPlacements(vehicles, config.baseImage),
+    [vehicles, config.baseImage],
   );
 
   useEffect(() => {
@@ -149,7 +188,9 @@ export default function LeafletMapCanvas({
         event.latlng.lng,
       ]);
       const matched = findBuildingAtPoint(canonicalPoint, buildingsRef.current);
-      onSelectBuildingRef.current(matched?.id ?? null);
+      onSelectRef.current(
+        matched ? { kind: 'building', id: matched.id } : null,
+      );
     };
 
     map.on('zoomend', syncOverlayVisibility);
@@ -175,8 +216,13 @@ export default function LeafletMapCanvas({
     const layerMap = polygonLayersRef.current;
     layerMap.clear();
 
+    const currentBuildingId =
+      selectionRef.current?.kind === 'building'
+        ? selectionRef.current.id
+        : null;
+
     for (const footprint of footprintPlacements) {
-      const isSelected = footprint.id === selectedBuildingIdRef.current;
+      const isSelected = footprint.id === currentBuildingId;
       const polygon = L.polygon(footprint.latLngs, {
         ...(isSelected ? SELECTED_FOOTPRINT_STYLE : UNSELECTED_FOOTPRINT_STYLE),
         interactive: true,
@@ -204,6 +250,63 @@ export default function LeafletMapCanvas({
       applyFootprintSelectionState(polygon, id === selectedBuildingId);
     }
   }, [selectedBuildingId, placement, footprintPlacements]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isVehicleLayerVisible) {
+      return;
+    }
+
+    const vehicleGroup = L.layerGroup().addTo(map);
+    const markerMap = vehicleMarkersRef.current;
+    markerMap.clear();
+
+    const currentVehicleId =
+      selectionRef.current?.kind === 'vehicle'
+        ? selectionRef.current.id
+        : null;
+
+    for (const vehicle of vehiclePlacements) {
+      const isSelected = vehicle.id === currentVehicleId;
+      const marker = L.marker(vehicle.latLng, {
+        icon: createVehicleDivIcon(vehicle.spawnType),
+        bubblingMouseEvents: false,
+      }).addTo(vehicleGroup);
+
+      const element = marker.getElement();
+      if (element) {
+        element.setAttribute('data-testid', `vehicle-marker-${vehicle.id}`);
+        element.setAttribute('data-vehicle-id', vehicle.id);
+        element.setAttribute('data-spawn-type', vehicle.spawnType);
+        element.setAttribute('data-selected', isSelected ? 'true' : 'false');
+        element.setAttribute('aria-label', `${vehicle.id} 고정 차량 출현 지점`);
+      }
+
+      marker.on('click', (event) => {
+        L.DomEvent.stopPropagation(event);
+        onSelectRef.current({ kind: 'vehicle', id: vehicle.id });
+      });
+
+      markerMap.set(vehicle.id, marker);
+    }
+
+    return () => {
+      markerMap.clear();
+      vehicleGroup.remove();
+    };
+  }, [placement, vehiclePlacements, isVehicleLayerVisible]);
+
+  useEffect(() => {
+    for (const [id, marker] of vehicleMarkersRef.current.entries()) {
+      const element = marker.getElement();
+      if (element) {
+        element.setAttribute(
+          'data-selected',
+          id === selectedVehicleId ? 'true' : 'false',
+        );
+      }
+    }
+  }, [selectedVehicleId, isVehicleLayerVisible, placement, vehiclePlacements]);
 
   useEffect(() => {
     const map = mapRef.current;

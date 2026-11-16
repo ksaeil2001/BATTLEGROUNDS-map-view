@@ -4,6 +4,8 @@ import {
   assertNonEmptyString,
   assertValidCanonicalPoint,
   isRecord,
+  validateUniqueRecordArray,
+  validateVerificationRecord,
 } from './validation-helpers';
 import { getPublicBuildings } from '@/domain/buildings';
 import type {
@@ -14,68 +16,13 @@ import type {
   RooftopAccessKind,
   RooftopAccessValue,
   VerifiableField,
-  VerificationRecord,
-  VerificationStatus,
 } from '@/domain/types';
-
-const VALID_VERIFICATION_STATUSES: readonly VerificationStatus[] = [
-  'verified',
-  'unverified',
-  'needs-recheck',
-];
 
 const VALID_ROOFTOP_ACCESS_KINDS: readonly RooftopAccessKind[] = [
   'interior-stairs',
   'exterior-climb',
   'inaccessible',
 ];
-
-function validateVerificationRecord(
-  value: unknown,
-  buildingId: string,
-): VerificationRecord {
-  if (!isRecord(value)) {
-    throw new Error(`Invalid building:${buildingId}.provenance: expected object.`);
-  }
-
-  const verificationStatus = assertEnumValue(
-    value.verificationStatus,
-    VALID_VERIFICATION_STATUSES,
-    `building:${buildingId}.provenance.verificationStatus`,
-  );
-
-  const verificationSource = assertNonEmptyString(
-    value.verificationSource,
-    `building:${buildingId}.provenance.verificationSource`,
-  );
-  const verifiedGamePatch = assertNonEmptyString(
-    value.verifiedGamePatch,
-    `building:${buildingId}.provenance.verifiedGamePatch`,
-  );
-  const verifiedAt = assertNonEmptyString(
-    value.verifiedAt,
-    `building:${buildingId}.provenance.verifiedAt`,
-  );
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(verifiedAt)) {
-    throw new Error(
-      `Invalid building:${buildingId}.provenance.verifiedAt: expected YYYY-MM-DD.`,
-    );
-  }
-
-  if (verificationStatus === 'verified' && verifiedGamePatch === 'unverified') {
-    throw new Error(
-      `Invalid building:${buildingId}: verified record requires a verifiedGamePatch other than "unverified".`,
-    );
-  }
-
-  return {
-    verificationStatus,
-    verificationSource,
-    verifiedGamePatch,
-    verifiedAt,
-  };
-}
 
 function validateVerifiableField<T>(
   candidate: unknown,
@@ -254,7 +201,7 @@ function validateBuildingRecord(value: unknown, index: number): BuildingRecord {
     buildingType,
     footprint,
     mapImageVersion,
-    provenance: validateVerificationRecord(value.provenance, id),
+    provenance: validateVerificationRecord(value.provenance, `building:${id}`),
     attributes: validateAttributes(value.attributes, id),
   };
 }
@@ -263,21 +210,12 @@ function validateBuildingRecord(value: unknown, index: number): BuildingRecord {
  * Validate an unknown static buildings dataset at runtime.
  */
 export function validateBuildingDataset(candidate: unknown): BuildingRecord[] {
-  if (!Array.isArray(candidate)) {
-    throw new Error('Invalid buildings dataset: expected an array.');
-  }
-
-  const seenIds = new Set<string>();
-  return candidate.map((entry, index) => {
-    const record = validateBuildingRecord(entry, index);
-    if (seenIds.has(record.id)) {
-      throw new Error(
-        `Duplicate building id "${record.id}" in buildings dataset.`,
-      );
-    }
-    seenIds.add(record.id);
-    return record;
-  });
+  return validateUniqueRecordArray(
+    candidate,
+    'buildings',
+    'building',
+    validateBuildingRecord,
+  );
 }
 
 /**

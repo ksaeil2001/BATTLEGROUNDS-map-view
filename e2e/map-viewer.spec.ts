@@ -568,3 +568,221 @@ test.describe('Pilot Slice roof footprint selection and Building Card', () => {
     }
   });
 });
+
+function getRelativeCenterOffset(
+  targetBox: BoxRect,
+  containerBox: BoxRect,
+): { relX: number; relY: number } {
+  return {
+    relX: (targetBox.x + targetBox.width / 2 - containerBox.x) / containerBox.width,
+    relY:
+      (targetBox.y + targetBox.height / 2 - containerBox.y) / containerBox.height,
+  };
+}
+
+test.describe('Fixed Vehicle Spawn Point layer toggle and detail card', () => {
+  test('desktop user toggles vehicle layer ON/OFF, inspects verified vehicle details without probabilities, and avoids roof/marker click collision', async ({
+    page,
+  }) => {
+    const viewport = { width: 1280, height: 800 };
+    await page.setViewportSize(viewport);
+    const runtimeErrors = collectRuntimeErrors(page);
+
+    await page.goto('/');
+    await page.getByTestId('map-selection-card').click();
+
+    const baseOverlay = page.locator('.taego-base-overlay');
+    const highResOverlay = page.locator('.taego-highres-overlay');
+    const zoneBoundary = page.locator('.taego-target-zone-boundary');
+    await expect(baseOverlay).toBeVisible();
+    const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
+
+    await page.getByTestId('target-zone-jump-button').click();
+    await expectTargetZoneFocused(page, initialZoneBox, viewport);
+    await waitForStableBoundingBox(baseOverlay);
+
+    // 1) Initial state: vehicle layer OFF, zero markers rendered
+    const toggleBtn = page.getByTestId('vehicle-layer-toggle-button');
+    await expect(toggleBtn).toBeVisible();
+    await expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(toggleBtn).toContainText('차량 위치 OFF');
+    await expect(page.locator('.taego-vehicle-marker-icon')).toHaveCount(0);
+    await expect(
+      page.getByTestId('vehicle-marker-palace-vehicle-unverified-01'),
+    ).toHaveCount(0);
+
+    // 2) Toggle ON: only verified markers render at exact Canonical Pixel Space coordinates
+    await toggleBtn.click();
+    await expect(toggleBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(toggleBtn).toContainText('차량 위치 ON');
+
+    const palaceVehicle = page.getByTestId('vehicle-marker-palace-vehicle-01');
+    const taegoWideVehicle = page.getByTestId(
+      'vehicle-marker-taego-wide-vehicle-01',
+    );
+    await expect(palaceVehicle).toHaveCount(1);
+    await expect(taegoWideVehicle).toHaveCount(1);
+    await expect(
+      page.getByTestId('vehicle-marker-palace-vehicle-unverified-01'),
+    ).toHaveCount(0);
+
+    const overlayBox = await waitForStableBoundingBox(highResOverlay);
+    const palaceVehicleBox = await getBoundingBoxOrThrow(palaceVehicle);
+    const taegoWideBox = await getBoundingBoxOrThrow(taegoWideVehicle);
+
+    const palaceRel = getRelativeCenterOffset(palaceVehicleBox, overlayBox);
+    expect(Math.abs(palaceRel.relX - 0.825)).toBeLessThan(0.01);
+    expect(Math.abs(palaceRel.relY - 0.5)).toBeLessThan(0.01);
+
+    const wideRel = getRelativeCenterOffset(taegoWideBox, overlayBox);
+    expect(Math.abs(wideRel.relX - 0.1)).toBeLessThan(0.01);
+    expect(Math.abs(wideRel.relY - 0.6875)).toBeLessThan(0.01);
+
+    // 3) Click verified garage marker -> opens VehicleSpawnCard without probability or 100% guarantee claims
+    await palaceVehicle.click();
+    const vehicleCard = page.getByTestId('vehicle-spawn-card');
+    await expect(vehicleCard).toBeVisible();
+    await expect(vehicleCard).toHaveAttribute(
+      'data-vehicle-id',
+      'palace-vehicle-01',
+    );
+    await expect(palaceVehicle).toHaveAttribute('data-selected', 'true');
+    await expect(taegoWideVehicle).toHaveAttribute('data-selected', 'false');
+
+    await expect(vehicleCard).toContainText('샘플');
+    await expect(page.getByTestId('vehicle-game-mode-value')).toContainText(
+      'all-verified',
+    );
+    await expect(page.getByTestId('vehicle-spawn-type-value')).toContainText(
+      'garage',
+    );
+    await expect(page.getByTestId('vehicle-types-value')).toContainText(
+      '포니 쿠페, 사륜 차량',
+    );
+    await expect(page.getByTestId('vehicle-provenance')).toContainText(
+      'sample-v1',
+    );
+    await expect(page.getByTestId('vehicle-provenance')).toContainText(
+      '자체 제작 샘플 지도(sample-v1) 차량 레이어 검증 기준',
+    );
+    await expect(vehicleCard).not.toContainText('%');
+    await expect(vehicleCard).not.toContainText('확정 출현');
+
+    // 4) Click building roof while VehicleSpawnCard is open -> closes VehicleSpawnCard, opens BuildingCard
+    const p1Upper = await canonicalToClientPoint(baseOverlay, [3890, 2360]);
+    await page.mouse.click(p1Upper.x, p1Upper.y);
+    const buildingCard = page.getByTestId('building-card');
+    await expect(buildingCard).toHaveAttribute('data-building-id', 'palace-01');
+    await expect(vehicleCard).toHaveCount(0);
+    await expect(palaceVehicle).toHaveAttribute('data-selected', 'false');
+
+    // 5) Click taego-wide vehicle marker while BuildingCard is open -> closes BuildingCard, opens VehicleSpawnCard
+    await taegoWideVehicle.click();
+    await expect(vehicleCard).toHaveAttribute(
+      'data-vehicle-id',
+      'taego-wide-vehicle-01',
+    );
+    await expect(buildingCard).toHaveCount(0);
+    await expectOnlySelectedFootprint(page, null);
+    await expect(vehicleCard).toContainText('taego-wide');
+    await expect(page.getByTestId('vehicle-game-mode-value')).toContainText(
+      'normal',
+    );
+    await expect(page.getByTestId('vehicle-spawn-type-value')).toContainText(
+      'fixed-spot',
+    );
+    await expect(page.getByTestId('vehicle-types-value')).toContainText(
+      '포터, 다시야',
+    );
+    await expect(page.getByTestId('vehicle-provenance')).toContainText(
+      'sample-v1',
+    );
+    await expect(page.getByTestId('vehicle-provenance')).toContainText(
+      '자체 제작 샘플 지도(sample-v1) 전역 도로 스폰 검증 기준',
+    );
+
+    // 6) Clicking road closes VehicleSpawnCard
+    const road = await canonicalToClientPoint(baseOverlay, [4010, 2750]);
+    await page.mouse.click(road.x, road.y);
+    await expect(vehicleCard).toHaveCount(0);
+
+    // 7) Re-open VehicleSpawnCard, then toggle OFF -> clears markers, closes card, and keeps roof clicks working
+    await palaceVehicle.click();
+    await expect(vehicleCard).toBeVisible();
+    await toggleBtn.click();
+    await expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.taego-vehicle-marker-icon')).toHaveCount(0);
+    await expect(vehicleCard).toHaveCount(0);
+
+    await page.mouse.click(p1Upper.x, p1Upper.y);
+    await expect(buildingCard).toHaveAttribute('data-building-id', 'palace-01');
+    await expectOnlySelectedFootprint(page, 'palace-01');
+
+    expect(runtimeErrors).toEqual([]);
+  });
+
+  test('mobile user (390x844) toggles vehicle layer ON without overflow, opens bottom detail card, and toggles OFF', async ({
+    browser,
+  }) => {
+    const viewport = { width: 390, height: 844 };
+    const context = await browser.newContext({
+      viewport,
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    const runtimeErrors = collectRuntimeErrors(page);
+
+    try {
+      await page.goto('/');
+      await page.getByTestId('map-selection-card').tap();
+
+      const baseOverlay = page.locator('.taego-base-overlay');
+      const zoneBoundary = page.locator('.taego-target-zone-boundary');
+      const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
+
+      await page.getByTestId('target-zone-jump-button').tap();
+      await expectTargetZoneFocused(page, initialZoneBox, viewport);
+      await waitForStableBoundingBox(baseOverlay);
+
+      const toggleBtn = page.getByTestId('vehicle-layer-toggle-button');
+      await expect(toggleBtn).toBeVisible();
+      await expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+
+      const hasHorizontalOverflow = await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth >
+          document.documentElement.clientWidth,
+      );
+      expect(hasHorizontalOverflow).toBe(false);
+
+      await toggleBtn.tap();
+      await expect(toggleBtn).toHaveAttribute('aria-pressed', 'true');
+
+      const palaceVehicle = page.getByTestId(
+        'vehicle-marker-palace-vehicle-01',
+      );
+      await expect(palaceVehicle).toBeVisible();
+      await palaceVehicle.tap();
+
+      const vehicleCard = page.getByTestId('vehicle-spawn-card');
+      await expect(vehicleCard).toBeVisible();
+      await expect(vehicleCard).toHaveAttribute(
+        'data-vehicle-id',
+        'palace-vehicle-01',
+      );
+      const cardBox = await getBoundingBoxOrThrow(vehicleCard);
+      expect(cardBox.y).toBeGreaterThan(viewport.height * 0.45);
+      expect(cardBox.width).toBeGreaterThanOrEqual(350);
+
+      await toggleBtn.tap();
+      await expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+      await expect(page.locator('.taego-vehicle-marker-icon')).toHaveCount(0);
+      await expect(vehicleCard).toHaveCount(0);
+
+      expect(runtimeErrors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+});

@@ -5,11 +5,14 @@ import { useCallback, useMemo, useState } from 'react';
 import { getPublicBuildings } from '@/domain/buildings';
 import type {
   BuildingRecord,
+  FixedVehicleSpawnRecord,
   MapAssetMode,
   MapDatasetConfig,
 } from '@/domain/types';
+import { getPublicVehicles } from '@/domain/vehicles';
 import BuildingCard from './BuildingCard';
-import type { MapCameraCommand } from './LeafletMapCanvas';
+import type { MapCameraCommand, MapSelection } from './LeafletMapCanvas';
+import VehicleSpawnCard from './VehicleSpawnCard';
 
 const DynamicLeafletMapCanvas = dynamic(() => import('./LeafletMapCanvas'), {
   ssr: false,
@@ -21,6 +24,7 @@ const DynamicLeafletMapCanvas = dynamic(() => import('./LeafletMapCanvas'), {
 interface TaegoMapShellProps {
   maps: readonly MapDatasetConfig[];
   buildings: readonly BuildingRecord[];
+  vehicles: readonly FixedVehicleSpawnRecord[];
 }
 
 const ASSET_MODE_COPY: Record<
@@ -40,13 +44,16 @@ const ASSET_MODE_COPY: Record<
   },
 };
 
-export default function TaegoMapShell({ maps, buildings }: TaegoMapShellProps) {
+export default function TaegoMapShell({
+  maps,
+  buildings,
+  vehicles,
+}: TaegoMapShellProps) {
   const [selectedMapId, setSelectedMapId] = useState<
     MapDatasetConfig['mapId'] | null
   >(null);
-  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(
-    null,
-  );
+  const [selection, setSelection] = useState<MapSelection>(null);
+  const [isVehicleLayerVisible, setIsVehicleLayerVisible] = useState(false);
   const [cameraCommand, setCameraCommand] = useState<MapCameraCommand | null>(
     null,
   );
@@ -55,24 +62,48 @@ export default function TaegoMapShell({ maps, buildings }: TaegoMapShellProps) {
     () => getPublicBuildings(buildings),
     [buildings],
   );
+  const publicVehicles = useMemo(
+    () => getPublicVehicles(vehicles),
+    [vehicles],
+  );
   const activeConfig =
     maps.find((candidate) => candidate.mapId === selectedMapId) ?? null;
   const activePrimaryZone = activeConfig?.targetZones[0];
+
+  const resolveZoneName = useCallback(
+    (zoneId: string) =>
+      activeConfig?.targetZones.find((zone) => zone.id === zoneId)?.displayName,
+    [activeConfig],
+  );
+
   const selectedBuilding = useMemo(
     () =>
-      publicBuildings.find(
-        (building) => building.id === selectedBuildingId,
-      ) ?? null,
-    [publicBuildings, selectedBuildingId],
+      selection?.kind === 'building'
+        ? (publicBuildings.find((building) => building.id === selection.id) ??
+          null)
+        : null,
+    [publicBuildings, selection],
   );
-  const selectedBuildingZoneName = useMemo(() => {
-    if (!activeConfig || !selectedBuilding) {
-      return undefined;
-    }
-    return activeConfig.targetZones.find(
-      (zone) => zone.id === selectedBuilding.zoneId,
-    )?.displayName;
-  }, [activeConfig, selectedBuilding]);
+  const selectedVehicle = useMemo(
+    () =>
+      isVehicleLayerVisible && selection?.kind === 'vehicle'
+        ? (publicVehicles.find((vehicle) => vehicle.id === selection.id) ??
+          null)
+        : null,
+    [isVehicleLayerVisible, publicVehicles, selection],
+  );
+
+  const handleToggleVehicleLayer = useCallback(() => {
+    setIsVehicleLayerVisible((prev) => {
+      const next = !prev;
+      if (!next) {
+        setSelection((current) =>
+          current?.kind === 'vehicle' ? null : current,
+        );
+      }
+      return next;
+    });
+  }, []);
 
   const handleResetView = useCallback(() => {
     setCameraCommand((prev) => ({
@@ -178,7 +209,8 @@ export default function TaegoMapShell({ maps, buildings }: TaegoMapShellProps) {
           data-testid="back-to-map-list-button"
           onClick={() => {
             setSelectedMapId(null);
-            setSelectedBuildingId(null);
+            setSelection(null);
+            setIsVehicleLayerVisible(false);
             setCameraCommand(null);
           }}
         >
@@ -206,19 +238,43 @@ export default function TaegoMapShell({ maps, buildings }: TaegoMapShellProps) {
         ) : null}
       </div>
 
+      <div className="taego-layer-controls" data-testid="map-layer-controls">
+        <button
+          type="button"
+          className={`taego-control-btn ${isVehicleLayerVisible ? 'taego-control-btn-active' : ''}`}
+          data-testid="vehicle-layer-toggle-button"
+          aria-label="고정 차량 출현 지점 레이어 표시 전환"
+          aria-pressed={isVehicleLayerVisible}
+          onClick={handleToggleVehicleLayer}
+        >
+          {isVehicleLayerVisible ? '차량 위치 ON' : '차량 위치 OFF'}
+        </button>
+      </div>
+
       <DynamicLeafletMapCanvas
         config={activeConfig}
         buildings={publicBuildings}
-        selectedBuildingId={selectedBuildingId}
-        onSelectBuilding={setSelectedBuildingId}
+        vehicles={publicVehicles}
+        isVehicleLayerVisible={isVehicleLayerVisible}
+        selection={selection}
+        onSelect={setSelection}
         cameraCommand={cameraCommand}
       />
 
       {selectedBuilding ? (
         <BuildingCard
           building={selectedBuilding}
-          zoneName={selectedBuildingZoneName}
-          onClose={() => setSelectedBuildingId(null)}
+          zoneName={resolveZoneName(selectedBuilding.zoneId)}
+          onClose={() => setSelection(null)}
+        />
+      ) : null}
+
+      {selectedVehicle ? (
+        <VehicleSpawnCard
+          vehicle={selectedVehicle}
+          assetMode={activeConfig.assetMode}
+          zoneName={resolveZoneName(selectedVehicle.zoneId)}
+          onClose={() => setSelection(null)}
         />
       ) : null}
 

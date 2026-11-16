@@ -2,7 +2,15 @@ import {
   CANONICAL_MAP_SIZE,
   type CanonicalBounds,
   type CanonicalPoint,
+  type VerificationRecord,
+  type VerificationStatus,
 } from '@/domain/types';
+
+const VALID_VERIFICATION_STATUSES: readonly VerificationStatus[] = [
+  'verified',
+  'unverified',
+  'needs-recheck',
+];
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -89,4 +97,74 @@ export function assertValidCanonicalBounds(
   }
 
   return [topLeft, bottomRight];
+}
+
+export function validateVerificationRecord(
+  value: unknown,
+  recordLabel: string,
+): VerificationRecord {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${recordLabel}.provenance: expected object.`);
+  }
+
+  const verificationStatus = assertEnumValue(
+    value.verificationStatus,
+    VALID_VERIFICATION_STATUSES,
+    `${recordLabel}.provenance.verificationStatus`,
+  );
+
+  const verificationSource = assertNonEmptyString(
+    value.verificationSource,
+    `${recordLabel}.provenance.verificationSource`,
+  );
+  const verifiedGamePatch = assertNonEmptyString(
+    value.verifiedGamePatch,
+    `${recordLabel}.provenance.verifiedGamePatch`,
+  );
+  const verifiedAt = assertNonEmptyString(
+    value.verifiedAt,
+    `${recordLabel}.provenance.verifiedAt`,
+  );
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(verifiedAt)) {
+    throw new Error(
+      `Invalid ${recordLabel}.provenance.verifiedAt: expected YYYY-MM-DD.`,
+    );
+  }
+
+  if (verificationStatus === 'verified' && verifiedGamePatch === 'unverified') {
+    throw new Error(
+      `Invalid ${recordLabel}: verified record requires a verifiedGamePatch other than "unverified".`,
+    );
+  }
+
+  return {
+    verificationStatus,
+    verificationSource,
+    verifiedGamePatch,
+    verifiedAt,
+  };
+}
+
+export function validateUniqueRecordArray<T extends { id: string }>(
+  candidate: unknown,
+  datasetName: string,
+  itemLabel: string,
+  validateItem: (entry: unknown, index: number) => T,
+): T[] {
+  if (!Array.isArray(candidate)) {
+    throw new Error(`Invalid ${datasetName} dataset: expected an array.`);
+  }
+
+  const seenIds = new Set<string>();
+  return candidate.map((entry, index) => {
+    const record = validateItem(entry, index);
+    if (seenIds.has(record.id)) {
+      throw new Error(
+        `Duplicate ${itemLabel} id "${record.id}" in ${datasetName} dataset.`,
+      );
+    }
+    seenIds.add(record.id);
+    return record;
+  });
 }
