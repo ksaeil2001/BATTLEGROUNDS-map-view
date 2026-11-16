@@ -115,8 +115,8 @@ export default function TaegoMapShell({ maps }: TaegoMapShellProps) {
                             {primaryZone?.displayName ?? '미확인'}
                           </strong>
                           {primaryZone?.pilotReady
-                            ? ' · 검증된 건물 및 고정 차량 위치 제공'
-                            : ' · 샘플 지도 탐색 전용 (검증 데이터 등록 준비 중)'}
+                            ? ' · 검증된 건물 및 고정 차량 출현 지점 제공'
+                            : ` · ${assetCopy.badge} 탐색 전용 (검증 데이터 등록 준비 중)`}
                         </li>
                         <li>
                           좌표 규격: Canonical Pixel Space{' '}
