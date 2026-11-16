@@ -1,7 +1,13 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type CDPSession,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 
 interface BoxRect {
   x: number;
@@ -1047,7 +1053,7 @@ test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
       await prodPage.keyboard.press('Control+Shift+P');
       await expectPickerAbsent(prodPage);
 
-      // Verify core viewer functionality still works in production
+      // Verify core viewer functionality (buildings + vehicle layer) works in production
       const baseOverlay = prodPage.locator('.taego-base-overlay');
       const zoneBoundary = prodPage.locator('.taego-target-zone-boundary');
       const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
@@ -1064,7 +1070,16 @@ test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
         'palace-01',
       );
 
-      // Verify mobile production session also has zero Picker UI
+      await prodPage.getByTestId('vehicle-layer-toggle-button').click();
+      await prodPage.getByTestId('vehicle-marker-palace-vehicle-01').click();
+      await expect(prodPage.getByTestId('vehicle-spawn-card')).toHaveAttribute(
+        'data-vehicle-id',
+        'palace-vehicle-01',
+      );
+      await prodPage.getByTestId('vehicle-layer-toggle-button').click();
+      await expect(prodPage.getByTestId('vehicle-spawn-card')).toHaveCount(0);
+
+      // Verify mobile production session has zero Picker UI, working tap selection, and touch-drag guard
       const mobileContext = await browser.newContext({
         viewport: { width: 390, height: 844 },
         hasTouch: true,
@@ -1072,10 +1087,40 @@ test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
       });
       try {
         const mobilePage = await mobileContext.newPage();
+        const mobileCdp = await mobileContext.newCDPSession(mobilePage);
         await mobilePage.goto('http://127.0.0.1:3101/?dev=true');
         await mobilePage.getByTestId('map-selection-card').tap();
         await expect(mobilePage.getByTestId('map-viewer-screen')).toBeVisible();
         await expectPickerAbsent(mobilePage);
+
+        const mobileZoneBox = await getBoundingBoxOrThrow(
+          mobilePage.locator('.taego-target-zone-boundary'),
+        );
+        await mobilePage.getByTestId('target-zone-jump-button').tap();
+        await expectTargetZoneFocused(mobilePage, mobileZoneBox, {
+          width: 390,
+          height: 844,
+        });
+        const mobileBaseOverlay = mobilePage.locator('.taego-base-overlay');
+        await waitForStableBoundingBox(mobileBaseOverlay);
+        const mobileP1 = await canonicalToClientPoint(mobileBaseOverlay, [
+          3760, 2475,
+        ]);
+
+        // Touch drag starting over palace-01 must NOT open BuildingCard
+        await dispatchTouchDrag(mobileCdp, mobileP1, { x: -10, y: -8 }, 5);
+        await mobilePage.mouse.click(mobileP1.x - 50, mobileP1.y - 40);
+        await expect(mobilePage.getByTestId('building-card')).toHaveCount(0);
+
+        // Clean single tap after cooldown opens BuildingCard
+        await mobilePage.waitForTimeout(220);
+        const settledP1 = await canonicalToClientPoint(mobileBaseOverlay, [
+          3760, 2475,
+        ]);
+        await mobilePage.touchscreen.tap(settledP1.x, settledP1.y);
+        await expect(
+          mobilePage.getByTestId('building-card'),
+        ).toHaveAttribute('data-building-id', 'palace-01');
       } finally {
         await mobileContext.close();
       }
@@ -1091,5 +1136,266 @@ test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
       await prodContext.close();
       stopChildProcess(prodServer);
     }
+  });
+});
+
+async function dispatchTouchDrag(
+  cdp: CDPSession,
+  start: { x: number; y: number },
+  stepDelta: { x: number; y: number },
+  steps: number,
+): Promise<void> {
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: start.x, y: start.y, id: 1 }],
+  });
+  for (let step = 1; step <= steps; step += 1) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [
+        {
+          x: start.x + step * stepDelta.x,
+          y: start.y + step * stepDelta.y,
+          id: 1,
+        },
+      ],
+    });
+  }
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  });
+}
+
+async function expectPalaceOverlayAlignment(
+  page: Page,
+  highResOverlay: Locator,
+): Promise<void> {
+  const overlayBox = await waitForStableBoundingBox(highResOverlay);
+  const roofBox = await getBoundingBoxOrThrow(
+    page.getByTestId('roof-footprint-palace-01'),
+  );
+  const vehicleBox = await getBoundingBoxOrThrow(
+    page.getByTestId('vehicle-marker-palace-vehicle-01'),
+  );
+
+  const relLeft = (roofBox.x - overlayBox.x) / overlayBox.width;
+  const relTop = (roofBox.y - overlayBox.y) / overlayBox.height;
+  const vehicleRel = getRelativeCenterOffset(vehicleBox, overlayBox);
+
+  expect(Math.abs(relLeft - 0.125)).toBeLessThan(0.01);
+  expect(Math.abs(relTop - 0.125)).toBeLessThan(0.01);
+  expect(Math.abs(vehicleRel.relX - 0.825)).toBeLessThan(0.01);
+  expect(Math.abs(vehicleRel.relY - 0.5)).toBeLessThan(0.01);
+}
+
+test.describe('Integrated responsive layout, mobile touch/pinch guard, and resize alignment (Issue #6)', () => {
+  test('mobile (390x844) blocks accidental selection during touch drag and two-finger pinch + cooldown while allowing clean single taps afterward', async ({
+    browser,
+  }) => {
+    const viewport = { width: 390, height: 844 };
+    const context = await browser.newContext({
+      viewport,
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    const runtimeErrors = collectRuntimeErrors(page);
+
+    try {
+      await page.goto('/');
+      await page.getByTestId('map-selection-card').tap();
+
+      const baseOverlay = page.locator('.taego-base-overlay');
+      const zoneBoundary = page.locator('.taego-target-zone-boundary');
+      const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
+
+      await page.getByTestId('target-zone-jump-button').tap();
+      await expectTargetZoneFocused(page, initialZoneBox, viewport);
+      await waitForStableBoundingBox(baseOverlay);
+
+      await page.getByTestId('vehicle-layer-toggle-button').tap();
+      const palaceVehicle = page.getByTestId(
+        'vehicle-marker-palace-vehicle-01',
+      );
+      await expect(palaceVehicle).toBeVisible();
+
+      const buildingCard = page.getByTestId('building-card');
+      const vehicleCard = page.getByTestId('vehicle-spawn-card');
+
+      // 1) Single-finger touch drag starting directly on palace-01 roof + immediate trailing click inside cooldown
+      const p1Start = await canonicalToClientPoint(baseOverlay, [3760, 2475]);
+      await dispatchTouchDrag(cdp, p1Start, { x: -12, y: -10 }, 6);
+      await page.mouse.click(p1Start.x - 72, p1Start.y - 60);
+      await expect(buildingCard).toHaveCount(0);
+      await expect(vehicleCard).toHaveCount(0);
+
+      // 2) Two-finger pinch zoom starting over palace-01 / Target Zone + trailing click inside cooldown
+      await page.waitForTimeout(220);
+      const pinchCenter = await canonicalToClientPoint(baseOverlay, [
+        3890, 2360,
+      ]);
+      const baseBoxBeforePinch = await getBoundingBoxOrThrow(baseOverlay);
+
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: pinchCenter.x - 18, y: pinchCenter.y, id: 1 }],
+      });
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [
+          { x: pinchCenter.x - 18, y: pinchCenter.y, id: 1 },
+          { x: pinchCenter.x + 18, y: pinchCenter.y, id: 2 },
+        ],
+      });
+      for (let step = 1; step <= 5; step += 1) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [
+            { x: pinchCenter.x - 18 - step * 14, y: pinchCenter.y, id: 1 },
+            { x: pinchCenter.x + 18 + step * 14, y: pinchCenter.y, id: 2 },
+          ],
+        });
+      }
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [{ x: pinchCenter.x + 88, y: pinchCenter.y, id: 2 }],
+      });
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+      });
+
+      // Trailing tap within cooldown must not select a building or vehicle
+      await page.mouse.click(pinchCenter.x, pinchCenter.y);
+      await expect(buildingCard).toHaveCount(0);
+      await expect(vehicleCard).toHaveCount(0);
+
+      await expect
+        .poll(async () => {
+          const afterPinchBox = await baseOverlay.boundingBox();
+          return afterPinchBox
+            ? afterPinchBox.width > baseBoxBeforePinch.width * 1.15
+            : false;
+        })
+        .toBe(true);
+
+      // 3) After cooldown, clean single taps on roof, vehicle marker, and empty road work normally
+      await page.getByTestId('target-zone-jump-button').tap();
+      await expectTargetZoneFocused(page, initialZoneBox, viewport);
+      await waitForStableBoundingBox(baseOverlay);
+      await page.waitForTimeout(220);
+
+      const p1Tap = await canonicalToClientPoint(baseOverlay, [3760, 2475]);
+      await page.touchscreen.tap(p1Tap.x, p1Tap.y);
+      await expect(buildingCard).toHaveAttribute(
+        'data-building-id',
+        'palace-01',
+      );
+      const cardBox = await getBoundingBoxOrThrow(buildingCard);
+      const roofBox = await getBoundingBoxOrThrow(
+        page.getByTestId('roof-footprint-palace-01'),
+      );
+      expect(cardBox.y).toBeGreaterThan(viewport.height * 0.45);
+      expect(roofBox.y + roofBox.height).toBeLessThanOrEqual(cardBox.y + 4);
+
+      await palaceVehicle.tap();
+      await expect(buildingCard).toHaveCount(0);
+      await expect(vehicleCard).toHaveAttribute(
+        'data-vehicle-id',
+        'palace-vehicle-01',
+      );
+
+      const roadTap = await canonicalToClientPoint(baseOverlay, [4010, 2750]);
+      await page.touchscreen.tap(roadTap.x, roadTap.y);
+      await expect(vehicleCard).toHaveCount(0);
+
+      expect(runtimeErrors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('desktop <-> mobile viewport resize, Unregistered Area jump, and zoom/pan keep Roof Footprint and vehicle markers aligned while adapting card layout', async ({
+    page,
+  }) => {
+    const desktopViewport = { width: 1280, height: 800 };
+    const mobileViewport = { width: 390, height: 844 };
+    await page.setViewportSize(desktopViewport);
+    const runtimeErrors = collectRuntimeErrors(page);
+
+    await page.goto('/');
+    await page.getByTestId('map-selection-card').click();
+
+    const baseOverlay = page.locator('.taego-base-overlay');
+    const highResOverlay = page.locator('.taego-highres-overlay');
+    const zoneBoundary = page.locator('.taego-target-zone-boundary');
+    await expect(baseOverlay).toBeVisible();
+    const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
+
+    // 1) Pan from Unregistered Area then jump back to Target Zone
+    await page.mouse.move(640, 400);
+    await page.mouse.down();
+    await page.mouse.move(900, 620, { steps: 8 });
+    await page.mouse.up();
+
+    await page.getByTestId('target-zone-jump-button').click();
+    await expectTargetZoneFocused(page, initialZoneBox, desktopViewport);
+    await waitForStableBoundingBox(baseOverlay);
+
+    // 2) Enable vehicle layer and select palace-01 -> desktop floating card does not obscure roof
+    await page.getByTestId('vehicle-layer-toggle-button').click();
+    const p1Click = await canonicalToClientPoint(baseOverlay, [3890, 2360]);
+    await page.mouse.click(p1Click.x, p1Click.y);
+
+    const buildingCard = page.getByTestId('building-card');
+    await expect(buildingCard).toHaveAttribute('data-building-id', 'palace-01');
+    const desktopCardBox = await getBoundingBoxOrThrow(buildingCard);
+    const desktopRoofBox = await getBoundingBoxOrThrow(
+      page.getByTestId('roof-footprint-palace-01'),
+    );
+    expect(desktopCardBox.x).toBeGreaterThan(desktopViewport.width * 0.65);
+    expect(desktopCardBox.width).toBeLessThanOrEqual(360);
+    expect(desktopRoofBox.x + desktopRoofBox.width).toBeLessThanOrEqual(
+      desktopCardBox.x,
+    );
+
+    // 3) Zoom in/out, pan, and resize Desktop 1280x800 -> Mobile 390x844
+    await page.mouse.move(640, 400);
+    await page.mouse.wheel(0, -240);
+    await waitForStableBoundingBox(highResOverlay);
+    await page.mouse.wheel(0, 120);
+    await waitForStableBoundingBox(highResOverlay);
+    await page.mouse.move(640, 400);
+    await page.mouse.down();
+    await page.mouse.move(610, 380, { steps: 5 });
+    await page.mouse.up();
+    await waitForStableBoundingBox(highResOverlay);
+
+    await page.setViewportSize(mobileViewport);
+    const mobileCardBox = await getBoundingBoxOrThrow(buildingCard);
+    expect(mobileCardBox.y).toBeGreaterThan(mobileViewport.height * 0.45);
+    expect(mobileCardBox.width).toBeGreaterThanOrEqual(350);
+    await expectPalaceOverlayAlignment(page, highResOverlay);
+
+    // 4) Resize Mobile 390x844 -> Desktop 1280x800 restores floating side card, alignment, and clickability
+    await page.setViewportSize(desktopViewport);
+    const restoredCardBox = await getBoundingBoxOrThrow(buildingCard);
+    expect(restoredCardBox.x).toBeGreaterThan(desktopViewport.width * 0.65);
+    await expectPalaceOverlayAlignment(page, highResOverlay);
+
+    await page.getByTestId('building-card-close-button').click();
+    await expect(buildingCard).toHaveCount(0);
+
+    const restoredP1Click = await canonicalToClientPoint(baseOverlay, [
+      3890, 2360,
+    ]);
+    await page.mouse.click(restoredP1Click.x, restoredP1Click.y);
+    await expect(buildingCard).toHaveAttribute('data-building-id', 'palace-01');
+    await page.getByTestId('building-card-close-button').click();
+    await expect(buildingCard).toHaveCount(0);
+
+    expect(runtimeErrors).toEqual([]);
   });
 });

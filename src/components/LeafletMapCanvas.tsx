@@ -10,11 +10,29 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
 } from 'react';
 import {
   findBuildingAtPoint,
   resolveBuildingFootprintPlacements,
 } from '@/domain/buildings';
+import {
+  beginMapDrag,
+  beginMapMove,
+  beginMapZoom,
+  createGestureGuardState,
+  endMapDrag,
+  endMapMove,
+  endMapZoom,
+  recordTouchEnd,
+  recordTouchMove,
+  recordTouchStart,
+  recordWheelZoom,
+  resetPendingUserNavigation,
+  shouldSuppressSelectionClick,
+  type GestureGuardState,
+  type TouchSamplePoint,
+} from '@/domain/gesture-guard';
 import {
   resolveMapLayerPlacement,
   toCanonicalPixel,
@@ -94,6 +112,107 @@ function createVehicleDivIcon(spawnType: VehicleSpawnType): L.DivIcon {
   });
 }
 
+function extractTouchPoints(event: TouchEvent): TouchSamplePoint[] {
+  return Array.from(
+    event.touches,
+    (touch) => [touch.clientX, touch.clientY] as const,
+  );
+}
+
+function bindNavigationGestureGuard(
+  container: HTMLDivElement,
+  map: L.Map,
+  gestureGuardRef: MutableRefObject<GestureGuardState>,
+  onZoomEnd: () => void,
+): () => void {
+  gestureGuardRef.current = createGestureGuardState();
+
+  const handleTouchStart = (event: TouchEvent) => {
+    gestureGuardRef.current = recordTouchStart(
+      gestureGuardRef.current,
+      extractTouchPoints(event),
+      performance.now(),
+    );
+  };
+  const handleTouchMove = (event: TouchEvent) => {
+    gestureGuardRef.current = recordTouchMove(
+      gestureGuardRef.current,
+      extractTouchPoints(event),
+      performance.now(),
+    );
+  };
+  const handleTouchEnd = (event: TouchEvent) => {
+    gestureGuardRef.current = recordTouchEnd(
+      gestureGuardRef.current,
+      event.touches.length,
+      performance.now(),
+    );
+  };
+  const handleWheel = () => {
+    gestureGuardRef.current = recordWheelZoom(
+      gestureGuardRef.current,
+      performance.now(),
+    );
+  };
+  const handleDragStart = () => {
+    gestureGuardRef.current = beginMapDrag(gestureGuardRef.current);
+  };
+  const handleDragEnd = () => {
+    gestureGuardRef.current = endMapDrag(
+      gestureGuardRef.current,
+      performance.now(),
+    );
+  };
+  const handleMoveStart = () => {
+    gestureGuardRef.current = beginMapMove(gestureGuardRef.current);
+  };
+  const handleMoveEnd = () => {
+    gestureGuardRef.current = endMapMove(
+      gestureGuardRef.current,
+      performance.now(),
+    );
+  };
+  const handleZoomStart = () => {
+    gestureGuardRef.current = beginMapZoom(gestureGuardRef.current);
+  };
+  const handleZoomEnd = () => {
+    onZoomEnd();
+    gestureGuardRef.current = endMapZoom(
+      gestureGuardRef.current,
+      performance.now(),
+    );
+  };
+
+  const passiveCapture = { passive: true, capture: true } as const;
+  container.addEventListener('touchstart', handleTouchStart, passiveCapture);
+  container.addEventListener('touchmove', handleTouchMove, passiveCapture);
+  container.addEventListener('touchend', handleTouchEnd, passiveCapture);
+  container.addEventListener('touchcancel', handleTouchEnd, passiveCapture);
+  container.addEventListener('wheel', handleWheel, passiveCapture);
+
+  map.on('dragstart', handleDragStart);
+  map.on('dragend', handleDragEnd);
+  map.on('movestart', handleMoveStart);
+  map.on('moveend', handleMoveEnd);
+  map.on('zoomstart', handleZoomStart);
+  map.on('zoomend', handleZoomEnd);
+
+  return () => {
+    container.removeEventListener('touchstart', handleTouchStart, true);
+    container.removeEventListener('touchmove', handleTouchMove, true);
+    container.removeEventListener('touchend', handleTouchEnd, true);
+    container.removeEventListener('touchcancel', handleTouchEnd, true);
+    container.removeEventListener('wheel', handleWheel, true);
+
+    map.off('dragstart', handleDragStart);
+    map.off('dragend', handleDragEnd);
+    map.off('movestart', handleMoveStart);
+    map.off('moveend', handleMoveEnd);
+    map.off('zoomstart', handleZoomStart);
+    map.off('zoomend', handleZoomEnd);
+  };
+}
+
 export default function LeafletMapCanvas({
   config,
   buildings,
@@ -110,18 +229,29 @@ export default function LeafletMapCanvas({
   const buildingsRef = useRef(buildings);
   const selectionRef = useRef(selection);
   const onSelectRef = useRef(onSelect);
-  const isSelectionSuppressedRef = useRef(false);
+  const isPickerSuppressedRef = useRef(false);
+  const gestureGuardRef = useRef(createGestureGuardState());
   const [devMapInstance, setDevMapInstance] = useState<L.Map | null>(null);
 
   buildingsRef.current = buildings;
   selectionRef.current = selection;
   onSelectRef.current = onSelect;
 
-  const isSelectionSuppressed = () =>
-    process.env.NODE_ENV === 'development' && isSelectionSuppressedRef.current;
+  const isSelectionSuppressed = () => {
+    if (
+      process.env.NODE_ENV === 'development' &&
+      isPickerSuppressedRef.current
+    ) {
+      return true;
+    }
+    return shouldSuppressSelectionClick(
+      gestureGuardRef.current,
+      performance.now(),
+    );
+  };
 
   const handlePickerActiveChange = useCallback((active: boolean) => {
-    isSelectionSuppressedRef.current = active;
+    isPickerSuppressedRef.current = active;
     if (active) {
       onSelectRef.current(null);
     }
@@ -221,7 +351,21 @@ export default function LeafletMapCanvas({
       );
     };
 
-    map.on('zoomend', syncOverlayVisibility);
+    const unbindNavigationGuard = bindNavigationGestureGuard(
+      container,
+      map,
+      gestureGuardRef,
+      syncOverlayVisibility,
+    );
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        map.invalidateSize({ pan: false });
+      });
+      resizeObserver.observe(container);
+    }
+
     map.on('click', handleMapClick);
     map.fitBounds(placement.baseBounds, { animate: false });
     syncOverlayVisibility();
@@ -231,10 +375,11 @@ export default function LeafletMapCanvas({
 
     return () => {
       if (process.env.NODE_ENV === 'development') {
-        isSelectionSuppressedRef.current = false;
+        isPickerSuppressedRef.current = false;
         setDevMapInstance(null);
       }
-      map.off('zoomend', syncOverlayVisibility);
+      resizeObserver?.disconnect();
+      unbindNavigationGuard();
       map.off('click', handleMapClick);
       map.remove();
       mapRef.current = null;
@@ -261,6 +406,7 @@ export default function LeafletMapCanvas({
       const polygon = L.polygon(footprint.latLngs, {
         ...(isSelected ? SELECTED_FOOTPRINT_STYLE : UNSELECTED_FOOTPRINT_STYLE),
         interactive: true,
+        noClip: true,
         className: 'taego-roof-footprint',
       }).addTo(footprintGroup);
 
@@ -351,6 +497,10 @@ export default function LeafletMapCanvas({
     if (!map || !cameraCommand) {
       return;
     }
+
+    gestureGuardRef.current = resetPendingUserNavigation(
+      gestureGuardRef.current,
+    );
 
     if (cameraCommand.type === 'reset') {
       map.fitBounds(placement.baseBounds, { animate: false });
