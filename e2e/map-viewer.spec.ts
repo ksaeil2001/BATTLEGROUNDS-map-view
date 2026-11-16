@@ -1,3 +1,6 @@
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 interface BoxRect {
@@ -783,6 +786,310 @@ test.describe('Fixed Vehicle Spawn Point layer toggle and detail card', () => {
       expect(runtimeErrors).toEqual([]);
     } finally {
       await context.close();
+    }
+  });
+});
+
+function collectFilesRecursively(rootDir: string): string[] {
+  const results: string[] = [];
+  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
+    const fullPath = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...collectFilesRecursively(fullPath));
+    } else if (entry.isFile()) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+async function waitForHttpReady(url: string, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        return;
+      }
+    } catch {
+      // Server still booting
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Timed out waiting for server at ${url}`);
+}
+
+function stopChildProcess(child: ChildProcess): void {
+  if (child.pid && process.platform === 'win32') {
+    try {
+      execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+      });
+      return;
+    } catch {
+      // Fall through to standard kill
+    }
+  }
+  child.kill();
+}
+
+async function expectPickerAbsent(page: Page): Promise<void> {
+  await expect(page.getByTestId('dev-picker-toolbar')).toHaveCount(0);
+  await expect(page.getByTestId('dev-picker-toggle-button')).toHaveCount(0);
+}
+
+test.describe('Development-only Polygon & Coordinate Picker (Seam 3)', () => {
+  test('dev user extracts polygon vertices and single vehicle coordinates, uses Undo/Cancel/Copy JSON, and suppresses normal selection clicks', async ({
+    browser,
+  }) => {
+    const viewport = { width: 1280, height: 800 };
+    const context = await browser.newContext({ viewport });
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const page = await context.newPage();
+    const runtimeErrors = collectRuntimeErrors(page);
+
+    try {
+      await page.goto('/');
+      await page.getByTestId('map-selection-card').click();
+
+      const baseOverlay = page.locator('.taego-base-overlay');
+      const zoneBoundary = page.locator('.taego-target-zone-boundary');
+      const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
+
+      await page.getByTestId('target-zone-jump-button').click();
+      await expectTargetZoneFocused(page, initialZoneBox, viewport);
+      await waitForStableBoundingBox(baseOverlay);
+
+      const pickerToolbar = page.getByTestId('dev-picker-toolbar');
+      const pickerToggle = page.getByTestId('dev-picker-toggle-button');
+      await expect(pickerToolbar).toBeVisible();
+      await expect(pickerToggle).toHaveAttribute('aria-pressed', 'false');
+
+      // Enable vehicle layer and open palace-01 first so we verify Picker closes cards and suppresses both building & vehicle clicks
+      await page.getByTestId('vehicle-layer-toggle-button').click();
+      const p1Click = await canonicalToClientPoint(baseOverlay, [3890, 2360]);
+      await page.mouse.click(p1Click.x, p1Click.y);
+      await expect(page.getByTestId('building-card')).toBeVisible();
+
+      // Activate Picker -> existing BuildingCard closes immediately
+      await pickerToggle.click();
+      await expect(pickerToggle).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByTestId('building-card')).toHaveCount(0);
+      await expect(page.getByTestId('dev-picker-mode-polygon')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+
+      // Click 3 points directly over registered roofs (palace-01, palace-02, palace-03) -> BuildingCard stays closed
+      const p2Click = await canonicalToClientPoint(baseOverlay, [4080, 2395]);
+      const p3Click = await canonicalToClientPoint(baseOverlay, [3820, 2620]);
+      await page.mouse.click(p1Click.x, p1Click.y);
+      await page.mouse.click(p2Click.x, p2Click.y);
+      await page.mouse.click(p3Click.x, p3Click.y);
+
+      await expect(page.getByTestId('building-card')).toHaveCount(0);
+      await expectOnlySelectedFootprint(page, null);
+      await expect(page.getByTestId('dev-picker-point-count')).toContainText(
+        '3개 점',
+      );
+      await expect(page.getByTestId('dev-picker-vertex-0')).toHaveCount(1);
+      await expect(page.getByTestId('dev-picker-vertex-1')).toHaveCount(1);
+      await expect(page.getByTestId('dev-picker-vertex-2')).toHaveCount(1);
+      await expect(
+        page.getByTestId('dev-picker-polygon-preview'),
+      ).toHaveAttribute('data-point-count', '3');
+
+      // Undo removes only the last vertex
+      await page.getByTestId('dev-picker-undo-button').click();
+      await expect(page.getByTestId('dev-picker-point-count')).toContainText(
+        '2개 점',
+      );
+      await expect(page.getByTestId('dev-picker-vertex-2')).toHaveCount(0);
+      await expect(page.getByTestId('dev-picker-vertex-1')).toHaveCount(1);
+
+      // Copy JSON copies valid integer CanonicalPoint[] array to clipboard
+      await page.getByTestId('dev-picker-copy-button').click();
+      await expect(page.getByTestId('dev-picker-copy-status')).toBeVisible();
+      const copiedPolygonText = await page.evaluate(() =>
+        navigator.clipboard.readText(),
+      );
+      const parsedPolygon = JSON.parse(copiedPolygonText) as [number, number][];
+      expect(parsedPolygon).toHaveLength(2);
+      expect(Number.isInteger(parsedPolygon[0]![0])).toBe(true);
+      expect(Number.isInteger(parsedPolygon[0]![1])).toBe(true);
+      expect(Math.abs(parsedPolygon[0]![0] - 3890)).toBeLessThanOrEqual(5);
+      expect(Math.abs(parsedPolygon[0]![1] - 2360)).toBeLessThanOrEqual(5);
+      expect(Math.abs(parsedPolygon[1]![0] - 4080)).toBeLessThanOrEqual(5);
+      expect(Math.abs(parsedPolygon[1]![1] - 2395)).toBeLessThanOrEqual(5);
+
+      // Switch to vehicle single-point mode and click directly on vehicle marker -> suppresses VehicleSpawnCard
+      await page.getByTestId('dev-picker-mode-vehicle').click();
+      await expect(page.getByTestId('dev-picker-point-count')).toContainText(
+        '0개 점',
+      );
+      const vehicleMarker = page.getByTestId('vehicle-marker-palace-vehicle-01');
+      await vehicleMarker.click();
+      await expect(page.getByTestId('vehicle-spawn-card')).toHaveCount(0);
+      await expect(page.getByTestId('dev-picker-point-count')).toContainText(
+        '1개 점',
+      );
+
+      await page.getByTestId('dev-picker-copy-button').click();
+      const copiedVehicleText = await page.evaluate(() =>
+        navigator.clipboard.readText(),
+      );
+      const parsedVehicle = JSON.parse(copiedVehicleText) as [number, number];
+      expect(parsedVehicle).toHaveLength(2);
+      expect(Number.isInteger(parsedVehicle[0])).toBe(true);
+      expect(Number.isInteger(parsedVehicle[1])).toBe(true);
+      expect(Math.abs(parsedVehicle[0] - 4260)).toBeLessThanOrEqual(5);
+      expect(Math.abs(parsedVehicle[1] - 2600)).toBeLessThanOrEqual(5);
+
+      // Cancel clears points while keeping editing active
+      await page.getByTestId('dev-picker-cancel-button').click();
+      await expect(page.getByTestId('dev-picker-point-count')).toContainText(
+        '0개 점',
+      );
+      await expect(page.getByTestId('dev-picker-vertex-0')).toHaveCount(0);
+      await expect(page.getByTestId('dev-picker-json-output')).toHaveText('[]');
+
+      // Deactivate Picker -> normal building & vehicle clicks resume
+      await pickerToggle.click();
+      await expect(pickerToggle).toHaveAttribute('aria-pressed', 'false');
+      await page.mouse.click(p1Click.x, p1Click.y);
+      await expect(page.getByTestId('building-card')).toHaveAttribute(
+        'data-building-id',
+        'palace-01',
+      );
+
+      expect(runtimeErrors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('production build tree-shakes Picker out of .next/static and next start denies all access on desktop and mobile', async ({
+    browser,
+  }) => {
+    test.setTimeout(90_000);
+
+    const nextBin = require.resolve('next/dist/bin/next');
+    const prodEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      NODE_ENV: 'production',
+      NEXT_DIST_DIR: '.next',
+    };
+
+    execFileSync(process.execPath, [nextBin, 'build'], {
+      cwd: process.cwd(),
+      env: prodEnv,
+      stdio: 'pipe',
+    });
+
+    const staticDir = path.join(process.cwd(), '.next', 'static');
+    expect(fs.existsSync(staticDir)).toBe(true);
+    const staticFiles = collectFilesRecursively(staticDir).filter(
+      (filePath) => filePath.endsWith('.js') || filePath.endsWith('.css'),
+    );
+    expect(staticFiles.length).toBeGreaterThan(0);
+
+    const forbiddenIdentifiers = [
+      'dev-picker-toolbar',
+      'dev-picker-toggle-button',
+      'dev-picker-mode-polygon',
+      'dev-picker-mode-vehicle',
+      'dev-picker-undo-button',
+      'dev-picker-cancel-button',
+      'dev-picker-copy-button',
+      '좌표 추출기',
+      '점 되돌리기',
+      'DevCoordinatePicker',
+    ];
+
+    for (const filePath of staticFiles) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      for (const token of forbiddenIdentifiers) {
+        expect(
+          content.includes(token),
+          `Found forbidden Picker token "${token}" in ${filePath}`,
+        ).toBe(false);
+      }
+    }
+
+    const prodServer = spawn(
+      process.execPath,
+      [nextBin, 'start', '-p', '3101', '-H', '127.0.0.1'],
+      {
+        cwd: process.cwd(),
+        env: prodEnv,
+        stdio: 'ignore',
+      },
+    );
+
+    const prodContext = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    const prodPage = await prodContext.newPage();
+    const runtimeErrors = collectRuntimeErrors(prodPage);
+
+    try {
+      await waitForHttpReady('http://127.0.0.1:3101');
+
+      await prodPage.goto('http://127.0.0.1:3101/');
+      await prodPage.getByTestId('map-selection-card').click();
+      await expect(prodPage.getByTestId('map-viewer-screen')).toBeVisible();
+      await expectPickerAbsent(prodPage);
+
+      // Query-parameter and keyboard-shortcut probes must not expose Picker in production
+      await prodPage.goto('http://127.0.0.1:3101/?dev=true&picker=1');
+      await prodPage.getByTestId('map-selection-card').click();
+      await prodPage.keyboard.press('p');
+      await prodPage.keyboard.press('Control+Shift+P');
+      await expectPickerAbsent(prodPage);
+
+      // Verify core viewer functionality still works in production
+      const baseOverlay = prodPage.locator('.taego-base-overlay');
+      const zoneBoundary = prodPage.locator('.taego-target-zone-boundary');
+      const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
+      await prodPage.getByTestId('target-zone-jump-button').click();
+      await expectTargetZoneFocused(prodPage, initialZoneBox, {
+        width: 1280,
+        height: 800,
+      });
+      await waitForStableBoundingBox(baseOverlay);
+      const p1Upper = await canonicalToClientPoint(baseOverlay, [3890, 2360]);
+      await prodPage.mouse.click(p1Upper.x, p1Upper.y);
+      await expect(prodPage.getByTestId('building-card')).toHaveAttribute(
+        'data-building-id',
+        'palace-01',
+      );
+
+      // Verify mobile production session also has zero Picker UI
+      const mobileContext = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      });
+      try {
+        const mobilePage = await mobileContext.newPage();
+        await mobilePage.goto('http://127.0.0.1:3101/?dev=true');
+        await mobilePage.getByTestId('map-selection-card').tap();
+        await expect(mobilePage.getByTestId('map-viewer-screen')).toBeVisible();
+        await expectPickerAbsent(mobilePage);
+      } finally {
+        await mobileContext.close();
+      }
+
+      // Dedicated dev routes must not exist in production
+      const devRouteRes = await fetch('http://127.0.0.1:3101/dev');
+      const pickerRouteRes = await fetch('http://127.0.0.1:3101/picker');
+      expect(devRouteRes.status).toBe(404);
+      expect(pickerRouteRes.status).toBe(404);
+
+      expect(runtimeErrors).toEqual([]);
+    } finally {
+      await prodContext.close();
+      stopChildProcess(prodServer);
     }
   });
 });

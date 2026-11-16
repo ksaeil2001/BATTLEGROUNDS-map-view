@@ -2,7 +2,15 @@
 
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { useEffect, useMemo, useRef } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   findBuildingAtPoint,
   resolveBuildingFootprintPlacements,
@@ -18,6 +26,11 @@ import type {
   VehicleSpawnType,
 } from '@/domain/types';
 import { resolveVehicleSpawnPlacements } from '@/domain/vehicles';
+
+const DevCoordinatePickerLazy =
+  process.env.NODE_ENV === 'development'
+    ? lazy(() => import('./dev/DevCoordinatePicker'))
+    : null;
 
 export type MapCameraCommand =
   | { id: number; type: 'reset' }
@@ -97,10 +110,22 @@ export default function LeafletMapCanvas({
   const buildingsRef = useRef(buildings);
   const selectionRef = useRef(selection);
   const onSelectRef = useRef(onSelect);
+  const isSelectionSuppressedRef = useRef(false);
+  const [devMapInstance, setDevMapInstance] = useState<L.Map | null>(null);
 
   buildingsRef.current = buildings;
   selectionRef.current = selection;
   onSelectRef.current = onSelect;
+
+  const isSelectionSuppressed = () =>
+    process.env.NODE_ENV === 'development' && isSelectionSuppressedRef.current;
+
+  const handlePickerActiveChange = useCallback((active: boolean) => {
+    isSelectionSuppressedRef.current = active;
+    if (active) {
+      onSelectRef.current(null);
+    }
+  }, []);
 
   const selectedBuildingId =
     selection?.kind === 'building' ? selection.id : null;
@@ -183,6 +208,9 @@ export default function LeafletMapCanvas({
     };
 
     const handleMapClick = (event: L.LeafletMouseEvent) => {
+      if (isSelectionSuppressed()) {
+        return;
+      }
       const canonicalPoint = toCanonicalPixel([
         event.latlng.lat,
         event.latlng.lng,
@@ -197,8 +225,15 @@ export default function LeafletMapCanvas({
     map.on('click', handleMapClick);
     map.fitBounds(placement.baseBounds, { animate: false });
     syncOverlayVisibility();
+    if (process.env.NODE_ENV === 'development') {
+      setDevMapInstance(map);
+    }
 
     return () => {
+      if (process.env.NODE_ENV === 'development') {
+        isSelectionSuppressedRef.current = false;
+        setDevMapInstance(null);
+      }
       map.off('zoomend', syncOverlayVisibility);
       map.off('click', handleMapClick);
       map.remove();
@@ -270,7 +305,7 @@ export default function LeafletMapCanvas({
       const isSelected = vehicle.id === currentVehicleId;
       const marker = L.marker(vehicle.latLng, {
         icon: createVehicleDivIcon(vehicle.spawnType),
-        bubblingMouseEvents: false,
+        bubblingMouseEvents: process.env.NODE_ENV === 'development',
       }).addTo(vehicleGroup);
 
       const element = marker.getElement();
@@ -283,6 +318,9 @@ export default function LeafletMapCanvas({
       }
 
       marker.on('click', (event) => {
+        if (isSelectionSuppressed()) {
+          return;
+        }
         L.DomEvent.stopPropagation(event);
         onSelectRef.current({ kind: 'vehicle', id: vehicle.id });
       });
@@ -330,10 +368,20 @@ export default function LeafletMapCanvas({
   }, [cameraCommand, placement]);
 
   return (
-    <div
-      ref={containerRef}
-      className="taego-map-canvas"
-      data-testid="leaflet-map-container"
-    />
+    <>
+      <div
+        ref={containerRef}
+        className="taego-map-canvas"
+        data-testid="leaflet-map-container"
+      />
+      {process.env.NODE_ENV === 'development' && DevCoordinatePickerLazy ? (
+        <Suspense fallback={null}>
+          <DevCoordinatePickerLazy
+            map={devMapInstance}
+            onActiveChange={handlePickerActiveChange}
+          />
+        </Suspense>
+      ) : null}
+    </>
   );
 }
