@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="3600 2200 800 800">
+  <defs>
+    <pattern id="palace-subgrid" width="100" height="100" patternUnits="userSpaceOnUse">
+      <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#334155" stroke-width="1.5" opacity="0.55" />
+    </pattern>
+  </defs>
+
+  <!-- High-resolution crop overlay aligned to CanonicalBounds [[3600, 2200], [4400, 3000]] -->
+  <rect x="3600" y="2200" width="800" height="800" fill="#162235" />
+  <rect x="3600" y="2200" width="800" height="800" fill="url(#palace-subgrid)" />
+
+  <!-- Sample compound courtyard walls & inner paths -->
+  <rect x="3640" y="2240" width="720" height="720" fill="none" stroke="#64748b" stroke-width="8" />
+  <path d="M 3640 2600 L 4360 2600 M 4000 2240 L 4000 2960" stroke="#475569" stroke-width="24" />
+  <circle cx="4000" cy="2600" r="46" fill="#1e293b" stroke="#94a3b8" stroke-width="4" />
+
+  <!-- Sample architectural roof shapes (for visual inspection only in Slice 1) -->
+  <!-- North-West L-shaped structure -->
+  <path d="M 3700 2300 H 3940 V 2390 H 3810 V 2520 H 3700 Z" fill="#3b4d6b" stroke="#cbd5e1" stroke-width="4" />
+  <path d="M 3720 2320 H 3920 V 2370 H 3790 V 2500 H 3720 Z" fill="#475d82" />
+
+  <!-- North-East main pavilion -->
+  <rect x="4070" y="2310" width="220" height="190" rx="6" fill="#3b4d6b" stroke="#cbd5e1" stroke-width="4" />
+  <rect x="4096" y="2336" width="168" height="138" fill="#475d82" stroke="#94a3b8" stroke-width="2" />
+  <line x1="4096" y1="2405" x2="4264" y2="2405" stroke="#cbd5e1" stroke-width="2.5" />
+
+  <!-- South-West elongated hall -->
+  <rect x="3710" y="2690" width="230" height="160" rx="6" fill="#3b4d6b" stroke="#cbd5e1" stroke-width="4" />
+  <rect x="3730" y="2712" width="190" height="116" fill="#475d82" />
+
+  <!-- South-East annex -->
+  <rect x="4080" y="2695" width="180" height="150" rx="6" fill="#3b4d6b" stroke="#cbd5e1" stroke-width="4" />
+  <rect x="4102" y="2718" width="136" height="104" fill="#475d82" />
+
+  <!-- Target Zone sample label -->
+  <text x="4000" y="2275" fill="#fbbf24" font-family="ui-monospace, monospace" font-size="22" font-weight="700" text-anchor="middle">
+    SAMPLE HIGH-RES OVERLAY · PALACE (3600,2200 → 4400,3000)
+  </text>
+</svg>

@@ -1,0 +1,292 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  background-color: #090e17;
+  color: #f8fafc;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.leaflet-container {
+  background: #090e17;
+  font-family: inherit;
+  touch-action: none;
+}
+
+.taego-selection-page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 24px 16px;
+  background: radial-gradient(circle at top, #162238 0%, #090e17 65%);
+}
+
+.taego-selection-shell {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.taego-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.taego-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fbbf24;
+}
+
+.taego-title {
+  margin: 0;
+  font-size: clamp(24px, 4vw, 32px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+}
+
+.taego-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.taego-card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.taego-map-card {
+  width: 100%;
+  padding: 0;
+  border: 1px solid #283548;
+  border-radius: 14px;
+  background: #111827;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  transition: border-color 150ms ease, transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.taego-map-card:hover,
+.taego-map-card:focus-visible {
+  border-color: #f59e0b;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  outline: none;
+}
+
+.taego-map-preview-wrap {
+  background: #0b111c;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #1e293b;
+}
+
+.taego-map-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.taego-map-card-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.taego-map-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.taego-map-card-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.taego-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.taego-meta-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #cbd5e1;
+}
+
+.taego-card-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.taego-notice-footer {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #94a3b8;
+  border-top: 1px solid #1e293b;
+  padding-top: 12px;
+}
+
+.taego-viewer-screen {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  background: #090e17;
+}
+
+.taego-map-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.taego-map-controls {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+}
+
+.taego-control-btn {
+  appearance: none;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.taego-control-btn:hover,
+.taego-control-btn:focus-visible {
+  border-color: #f59e0b;
+  background: rgba(30, 41, 59, 0.96);
+  outline: none;
+}
+
+.taego-control-btn-accent {
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fde68a;
+}
+
+.taego-status-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 900;
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 12px;
+  color: #cbd5e1;
+  backdrop-filter: blur(6px);
+}
+
+.taego-status-coords {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #f8fafc;
+}
+
+.taego-map-loading {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .taego-map-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .taego-map-preview-wrap {
+    max-height: 220px;
+    border-right: none;
+    border-bottom: 1px solid #1e293b;
+  }
+
+  .taego-control-btn {
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
+  .taego-status-bar {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+}

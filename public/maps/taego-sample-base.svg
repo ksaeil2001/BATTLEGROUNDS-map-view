@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="2048" viewBox="0 0 8192 8192">
+  <defs>
+    <pattern id="grid-1024" width="1024" height="1024" patternUnits="userSpaceOnUse">
+      <path d="M 1024 0 L 0 0 0 1024" fill="none" stroke="#1e293b" stroke-width="10" />
+      <path d="M 512 0 L 512 1024 M 0 512 L 1024 512" fill="none" stroke="#172033" stroke-width="4" stroke-dasharray="18 18" />
+    </pattern>
+    <radialGradient id="terrain-glow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#182234" />
+      <stop offset="100%" stop-color="#0b111c" />
+    </radialGradient>
+  </defs>
+
+  <!-- Base tactical canvas (8192 x 8192 Canonical Pixel Space) -->
+  <rect width="8192" height="8192" fill="url(#terrain-glow)" />
+
+  <!-- Stylized sample terrain contours -->
+  <path d="M 900 1400 Q 2200 900 3300 1600 T 6200 1800 T 7400 3200 Q 6700 4800 5400 4500 T 2700 5400 T 1100 3900 Z" fill="#131e30" stroke="#1f2e47" stroke-width="12" />
+  <path d="M 1800 5900 Q 3400 5300 4800 6100 T 7200 6600 L 7200 7600 L 1400 7600 Z" fill="#111a2a" stroke="#1c2a40" stroke-width="10" />
+
+  <!-- Stylized sample river -->
+  <path d="M 0 5200 C 1600 4700, 2600 5600, 4100 5100 C 5500 4600, 6800 3900, 8192 4300" fill="none" stroke="#173552" stroke-width="190" stroke-linecap="round" />
+  <path d="M 0 5200 C 1600 4700, 2600 5600, 4100 5100 C 5500 4600, 6800 3900, 8192 4300" fill="none" stroke="#214c75" stroke-width="120" stroke-linecap="round" />
+
+  <!-- Stylized sample road network -->
+  <g fill="none" stroke="#475569" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" opacity="0.75">
+    <path d="M 400 2600 L 7600 2600" />
+    <path d="M 4000 300 L 4000 7800" />
+    <path d="M 1400 1100 L 3600 2200 L 3600 3000 L 2200 6600" />
+    <path d="M 4400 2200 L 6700 1200" />
+    <path d="M 4400 3000 L 6600 6400" />
+  </g>
+
+  <!-- 1024px Canonical Grid -->
+  <rect width="8192" height="8192" fill="url(#grid-1024)" />
+
+  <!-- Outer Canonical Border -->
+  <rect x="8" y="8" width="8176" height="8176" fill="none" stroke="#334155" stroke-width="16" />
+
+  <!-- Unregistered Area sample blocks -->
+  <g fill="#263349" stroke="#3b4c68" stroke-width="8">
+    <rect x="1480" y="1520" width="260" height="160" rx="8" />
+    <rect x="1820" y="1540" width="180" height="220" rx="8" />
+    <rect x="6120" y="1640" width="280" height="180" rx="8" />
+    <rect x="6460" y="1700" width="190" height="240" rx="8" />
+    <rect x="2050" y="6180" width="260" height="170" rx="8" />
+    <rect x="5760" y="6080" width="320" height="210" rx="8" />
+  </g>
+
+  <!-- Target Zone placeholder footprint (x: 3600..4400, y: 2200..3000) -->
+  <rect x="3600" y="2200" width="800" height="800" fill="#1e293b" stroke="#f59e0b" stroke-width="10" stroke-dasharray="28 18" />
+  <rect x="3720" y="2320" width="210" height="140" fill="#334155" />
+  <rect x="4050" y="2340" width="210" height="180" fill="#334155" />
+  <rect x="3740" y="2640" width="250" height="190" fill="#334155" />
+
+  <!-- Coordinate Axis Labels -->
+  <g fill="#64748b" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="110" font-weight="600">
+    <text x="90" y="170">(0, 0)</text>
+    <text x="3830" y="170">X: 4096</text>
+    <text x="7420" y="170">(8192, 0)</text>
+    <text x="90" y="4050">Y: 4096</text>
+    <text x="90" y="8090">(0, 8192)</text>
+    <text x="7200" y="8090">(8192, 8192)</text>
+  </g>
+
+  <!-- Sector Labels -->
+  <g fill="#94a3b8" font-family="system-ui, -apple-system, sans-serif" font-size="135" font-weight="700" text-anchor="middle">
+    <text x="1900" y="1380">Unregistered Area (NW)</text>
+    <text x="6300" y="1480">Unregistered Area (NE)</text>
+    <text x="2200" y="6020">Unregistered Area (SW)</text>
+    <text x="5950" y="5920">Unregistered Area (SE)</text>
+  </g>
+
+  <g fill="#fbbf24" font-family="system-ui, -apple-system, sans-serif" font-size="115" font-weight="700" text-anchor="middle">
+    <text x="4000" y="2130">TARGET ZONE · 궁전 (Palace)</text>
+  </g>
+
+  <g fill="#475569" font-family="ui-monospace, monospace" font-size="120" font-weight="700" text-anchor="middle">
+    <text x="4096" y="4220">SAMPLE TAEGO MAP · 8192 × 8192 CANONICAL PIXEL SPACE</text>
+  </g>
+</svg>
