@@ -128,6 +128,7 @@ test.describe('Static sample Taego map viewer', () => {
 
     const initialBaseBox = await getBoundingBoxOrThrow(baseOverlay);
     const initialZoneBox = await getBoundingBoxOrThrow(zoneBoundary);
+    await expect(highResOverlay).toHaveCSS('opacity', '0');
 
     // Wheel zoom in enlarges the rendered map overlay
     await page.mouse.move(640, 400);
@@ -157,13 +158,15 @@ test.describe('Static sample Taego map viewer', () => {
       })
       .toBe(true);
 
-    // Jump to Target Zone: Palace centers the boundary in viewport and zooms in
+    // Jump to Target Zone: Palace centers the boundary in viewport and reveals high-res overlay
     await page.getByTestId('target-zone-jump-button').click();
     await expectTargetZoneFocused(page, initialZoneBox, viewport);
+    await expect(highResOverlay).toHaveCSS('opacity', '1');
 
     // Reset back to full 8192x8192 view
     await page.getByTestId('reset-view-button').click();
     await expectFullMapReset(page, initialBaseBox);
+    await expect(highResOverlay).toHaveCSS('opacity', '0');
 
     // Return to map selection card
     await page.getByTestId('back-to-map-list-button').click();

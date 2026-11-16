@@ -77,9 +77,18 @@ describe('Canonical Pixel Space (8192x8192) coordinate system', () => {
     config4k.baseImage.pixelWidth = 4096;
     config4k.baseImage.pixelHeight = 4096;
 
-    expect(resolveMapLayerPlacement(config2k)).toEqual(
-      resolveMapLayerPlacement(config4k),
-    );
+    const placement2k = resolveMapLayerPlacement(config2k);
+    const placement4k = resolveMapLayerPlacement(config4k);
+
+    expect(placement2k.baseBounds).toEqual([
+      [0, 0],
+      [8192, 8192],
+    ]);
+    expect(placement2k.overlays[0]?.bounds).toEqual([
+      [5192, 3600],
+      [5992, 4400],
+    ]);
+    expect(placement4k).toEqual(placement2k);
   });
 
   it('rejects non-positive baseImage dimensions when resolving layer placement', () => {

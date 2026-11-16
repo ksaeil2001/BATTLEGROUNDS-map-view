@@ -20,7 +20,7 @@
         [3600, 2200],
         [4400, 3000]
       ],
-      "minDisplayZoom": -4
+      "minDisplayZoom": -2
     }
   ],
   "targetZones": [
