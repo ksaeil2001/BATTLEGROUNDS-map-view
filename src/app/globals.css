@@ -23,6 +23,14 @@ body {
   touch-action: none;
 }
 
+.taego-roof-footprint {
+  cursor: pointer;
+}
+
+.taego-roof-footprint:focus {
+  outline: none;
+}
+
 .taego-selection-page {
   min-height: 100dvh;
   display: flex;
@@ -256,6 +264,199 @@ body {
   font-size: 14px;
 }
 
+.taego-building-card {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1050;
+  width: 340px;
+  max-height: calc(100dvh - 72px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.taego-building-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.taego-building-card-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.taego-building-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.taego-zone-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(148, 163, 184, 0.14);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.taego-building-card-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.taego-building-card-id {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.taego-card-close-btn {
+  appearance: none;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.8);
+  color: #e2e8f0;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.taego-card-close-btn:hover,
+.taego-card-close-btn:focus-visible {
+  border-color: #f59e0b;
+  color: #fde68a;
+  outline: none;
+}
+
+.taego-building-exterior-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.taego-building-exterior-img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: #0b111c;
+  display: block;
+}
+
+.taego-building-exterior-caption {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.taego-building-exterior-unverified {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.taego-unverified-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.taego-unverified-note {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.taego-building-facts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.taego-building-fact-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: 13px;
+}
+
+.taego-building-fact-row dt {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.taego-building-fact-row dd {
+  margin: 0;
+  color: #f8fafc;
+  line-height: 1.45;
+}
+
+.taego-building-provenance {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 11px;
+}
+
+.taego-building-provenance div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.taego-building-provenance span {
+  color: #94a3b8;
+}
+
+.taego-building-provenance strong {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.taego-building-provenance-source {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 640px) {
   .taego-map-card {
     grid-template-columns: minmax(0, 1fr);
@@ -275,5 +476,21 @@ body {
   .taego-status-bar {
     font-size: 11px;
     padding: 6px 10px;
+  }
+
+  .taego-building-card {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    max-height: 38dvh;
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .taego-building-exterior-img {
+    max-height: 108px;
+    object-fit: contain;
   }
 }

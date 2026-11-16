@@ -58,3 +58,55 @@ export interface MapDatasetConfig {
   highResOverlays: MapOverlayLayer[];
   targetZones: TargetZone[];
 }
+
+export type VerificationStatus = 'verified' | 'unverified' | 'needs-recheck';
+
+export type VerifiableField<T> =
+  | { status: 'verified'; value: T }
+  | { status: 'unverified'; note?: string };
+
+export interface VerificationRecord {
+  verificationStatus: VerificationStatus;
+  verificationSource: string;
+  verifiedGamePatch: string;
+  verifiedAt: string;
+}
+
+export type RooftopAccessKind =
+  | 'interior-stairs'
+  | 'exterior-climb'
+  | 'inaccessible';
+
+export interface RooftopAccessValue {
+  kind: RooftopAccessKind;
+  summary: string;
+}
+
+export interface BuildingEntrancesValue {
+  count: number;
+  directionsSummary: string;
+}
+
+export interface BuildingExteriorImage {
+  imagePath: string;
+  credit: string;
+  capturedPatch: string;
+}
+
+export interface BuildingAttributes {
+  floors: VerifiableField<number>;
+  rooftopAccess: VerifiableField<RooftopAccessValue>;
+  entrances: VerifiableField<BuildingEntrancesValue>;
+  exteriorImage: VerifiableField<BuildingExteriorImage>;
+}
+
+export interface BuildingRecord {
+  id: string;
+  zoneId: string;
+  isPilotSlice: boolean;
+  buildingType: string;
+  footprint: readonly CanonicalPoint[];
+  mapImageVersion: string;
+  provenance: VerificationRecord;
+  attributes: BuildingAttributes;
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <rect width="640" height="360" fill="#0f172a" />
+  <rect x="16" y="16" width="608" height="328" rx="12" fill="#162235" stroke="#334155" stroke-width="2" />
+  <rect x="120" y="110" width="400" height="175" fill="#293852" stroke="#94a3b8" stroke-width="3" />
+  <polygon points="100,115 320,58 540,115" fill="#3b4d6b" stroke="#cbd5e1" stroke-width="3" />
+  <rect x="155" y="138" width="66" height="44" fill="#0f172a" stroke="#64748b" stroke-width="2" />
+  <rect x="287" y="138" width="66" height="44" fill="#0f172a" stroke="#64748b" stroke-width="2" />
+  <rect x="419" y="138" width="66" height="44" fill="#0f172a" stroke="#64748b" stroke-width="2" />
+  <rect x="292" y="218" width="56" height="67" fill="#1e293b" stroke="#fbbf24" stroke-width="2.5" />
+  <line x1="120" y1="202" x2="520" y2="202" stroke="#475569" stroke-width="3" />
+  <text x="320" y="318" fill="#cbd5e1" font-family="ui-monospace, monospace" font-size="14" font-weight="700" text-anchor="middle">
+    SAMPLE EXTERIOR · PALACE-01 (2F L-SHAPED WING)
+  </text>
+</svg>

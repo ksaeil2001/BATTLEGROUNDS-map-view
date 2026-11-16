@@ -60,7 +60,7 @@ export function toLeafletBounds([
   ];
 }
 
-function assertPositiveDimensions({
+export function assertPositiveDimensions({
   pixelWidth,
   pixelHeight,
 }: ImageDimensions): void {

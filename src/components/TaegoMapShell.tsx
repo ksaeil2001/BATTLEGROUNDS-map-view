@@ -1,8 +1,14 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useCallback, useState } from 'react';
-import type { MapAssetMode, MapDatasetConfig } from '@/domain/types';
+import { useCallback, useMemo, useState } from 'react';
+import { getPublicBuildings } from '@/domain/buildings';
+import type {
+  BuildingRecord,
+  MapAssetMode,
+  MapDatasetConfig,
+} from '@/domain/types';
+import BuildingCard from './BuildingCard';
 import type { MapCameraCommand } from './LeafletMapCanvas';
 
 const DynamicLeafletMapCanvas = dynamic(() => import('./LeafletMapCanvas'), {
@@ -14,6 +20,7 @@ const DynamicLeafletMapCanvas = dynamic(() => import('./LeafletMapCanvas'), {
 
 interface TaegoMapShellProps {
   maps: readonly MapDatasetConfig[];
+  buildings: readonly BuildingRecord[];
 }
 
 const ASSET_MODE_COPY: Record<
@@ -33,17 +40,39 @@ const ASSET_MODE_COPY: Record<
   },
 };
 
-export default function TaegoMapShell({ maps }: TaegoMapShellProps) {
+export default function TaegoMapShell({ maps, buildings }: TaegoMapShellProps) {
   const [selectedMapId, setSelectedMapId] = useState<
     MapDatasetConfig['mapId'] | null
   >(null);
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(
+    null,
+  );
   const [cameraCommand, setCameraCommand] = useState<MapCameraCommand | null>(
     null,
   );
 
+  const publicBuildings = useMemo(
+    () => getPublicBuildings(buildings),
+    [buildings],
+  );
   const activeConfig =
     maps.find((candidate) => candidate.mapId === selectedMapId) ?? null;
   const activePrimaryZone = activeConfig?.targetZones[0];
+  const selectedBuilding = useMemo(
+    () =>
+      publicBuildings.find(
+        (building) => building.id === selectedBuildingId,
+      ) ?? null,
+    [publicBuildings, selectedBuildingId],
+  );
+  const selectedBuildingZoneName = useMemo(() => {
+    if (!activeConfig || !selectedBuilding) {
+      return undefined;
+    }
+    return activeConfig.targetZones.find(
+      (zone) => zone.id === selectedBuilding.zoneId,
+    )?.displayName;
+  }, [activeConfig, selectedBuilding]);
 
   const handleResetView = useCallback(() => {
     setCameraCommand((prev) => ({
@@ -149,6 +178,7 @@ export default function TaegoMapShell({ maps }: TaegoMapShellProps) {
           data-testid="back-to-map-list-button"
           onClick={() => {
             setSelectedMapId(null);
+            setSelectedBuildingId(null);
             setCameraCommand(null);
           }}
         >
@@ -178,8 +208,19 @@ export default function TaegoMapShell({ maps }: TaegoMapShellProps) {
 
       <DynamicLeafletMapCanvas
         config={activeConfig}
+        buildings={publicBuildings}
+        selectedBuildingId={selectedBuildingId}
+        onSelectBuilding={setSelectedBuildingId}
         cameraCommand={cameraCommand}
       />
+
+      {selectedBuilding ? (
+        <BuildingCard
+          building={selectedBuilding}
+          zoneName={selectedBuildingZoneName}
+          onClose={() => setSelectedBuildingId(null)}
+        />
+      ) : null}
 
       <footer className="taego-status-bar" data-testid="map-status-bar">
         <span>{activeAssetCopy.notice}</span>

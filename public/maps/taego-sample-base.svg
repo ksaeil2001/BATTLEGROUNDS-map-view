@@ -48,9 +48,10 @@
 
   <!-- Target Zone placeholder footprint (x: 3600..4400, y: 2200..3000) -->
   <rect x="3600" y="2200" width="800" height="800" fill="#1e293b" stroke="#f59e0b" stroke-width="10" stroke-dasharray="28 18" />
-  <rect x="3720" y="2320" width="210" height="140" fill="#334155" />
-  <rect x="4050" y="2340" width="210" height="180" fill="#334155" />
-  <rect x="3740" y="2640" width="250" height="190" fill="#334155" />
+  <path d="M 3700 2300 H 3940 V 2430 H 3840 V 2520 H 3700 Z" fill="#334155" />
+  <rect x="3960" y="2300" width="240" height="190" fill="#334155" />
+  <rect x="3700" y="2540" width="240" height="160" fill="#334155" />
+  <rect x="4080" y="2800" width="200" height="130" fill="#273549" />
 
   <!-- Coordinate Axis Labels -->
   <g fill="#64748b" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="110" font-weight="600">

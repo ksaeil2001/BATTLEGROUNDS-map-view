@@ -3,8 +3,15 @@
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useEffect, useMemo, useRef } from 'react';
-import { resolveMapLayerPlacement } from '@/domain/map-coordinates';
-import type { MapDatasetConfig } from '@/domain/types';
+import {
+  findBuildingAtPoint,
+  resolveBuildingFootprintPlacements,
+} from '@/domain/buildings';
+import {
+  resolveMapLayerPlacement,
+  toCanonicalPixel,
+} from '@/domain/map-coordinates';
+import type { BuildingRecord, MapDatasetConfig } from '@/domain/types';
 
 export type MapCameraCommand =
   | { id: number; type: 'reset' }
@@ -12,17 +19,64 @@ export type MapCameraCommand =
 
 interface LeafletMapCanvasProps {
   config: MapDatasetConfig;
+  buildings: readonly BuildingRecord[];
+  selectedBuildingId: string | null;
+  onSelectBuilding: (buildingId: string | null) => void;
   cameraCommand: MapCameraCommand | null;
+}
+
+const UNSELECTED_FOOTPRINT_STYLE: L.PathOptions = {
+  color: '#fbbf24',
+  weight: 2,
+  opacity: 0,
+  fillColor: '#f59e0b',
+  fillOpacity: 0,
+};
+
+const SELECTED_FOOTPRINT_STYLE: L.PathOptions = {
+  color: '#fbbf24',
+  weight: 3,
+  opacity: 1,
+  fillColor: '#f59e0b',
+  fillOpacity: 0.24,
+};
+
+function applyFootprintSelectionState(
+  polygon: L.Polygon,
+  isSelected: boolean,
+): void {
+  polygon.setStyle(
+    isSelected ? SELECTED_FOOTPRINT_STYLE : UNSELECTED_FOOTPRINT_STYLE,
+  );
+  const element = polygon.getElement();
+  if (element) {
+    element.setAttribute('data-selected', isSelected ? 'true' : 'false');
+  }
 }
 
 export default function LeafletMapCanvas({
   config,
+  buildings,
+  selectedBuildingId,
+  onSelectBuilding,
   cameraCommand,
 }: LeafletMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const polygonLayersRef = useRef<Map<string, L.Polygon>>(new Map());
+  const buildingsRef = useRef(buildings);
+  const onSelectBuildingRef = useRef(onSelectBuilding);
+  const selectedBuildingIdRef = useRef(selectedBuildingId);
+
+  buildingsRef.current = buildings;
+  onSelectBuildingRef.current = onSelectBuilding;
+  selectedBuildingIdRef.current = selectedBuildingId;
 
   const placement = useMemo(() => resolveMapLayerPlacement(config), [config]);
+  const footprintPlacements = useMemo(
+    () => resolveBuildingFootprintPlacements(buildings, config.baseImage),
+    [buildings, config.baseImage],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -39,6 +93,7 @@ export default function LeafletMapCanvas({
       wheelPxPerZoomLevel: 60,
       attributionControl: false,
       zoomControl: false,
+      doubleClickZoom: false,
       maxBounds: placement.paddedMaxBounds,
       maxBoundsViscosity: 0.5,
     });
@@ -88,16 +143,67 @@ export default function LeafletMapCanvas({
       }
     };
 
+    const handleMapClick = (event: L.LeafletMouseEvent) => {
+      const canonicalPoint = toCanonicalPixel([
+        event.latlng.lat,
+        event.latlng.lng,
+      ]);
+      const matched = findBuildingAtPoint(canonicalPoint, buildingsRef.current);
+      onSelectBuildingRef.current(matched?.id ?? null);
+    };
+
     map.on('zoomend', syncOverlayVisibility);
+    map.on('click', handleMapClick);
     map.fitBounds(placement.baseBounds, { animate: false });
     syncOverlayVisibility();
 
     return () => {
       map.off('zoomend', syncOverlayVisibility);
+      map.off('click', handleMapClick);
       map.remove();
       mapRef.current = null;
     };
   }, [placement]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
+
+    const footprintGroup = L.layerGroup().addTo(map);
+    const layerMap = polygonLayersRef.current;
+    layerMap.clear();
+
+    for (const footprint of footprintPlacements) {
+      const isSelected = footprint.id === selectedBuildingIdRef.current;
+      const polygon = L.polygon(footprint.latLngs, {
+        ...(isSelected ? SELECTED_FOOTPRINT_STYLE : UNSELECTED_FOOTPRINT_STYLE),
+        interactive: true,
+        className: 'taego-roof-footprint',
+      }).addTo(footprintGroup);
+
+      const element = polygon.getElement();
+      if (element) {
+        element.setAttribute('data-testid', `roof-footprint-${footprint.id}`);
+        element.setAttribute('data-building-id', footprint.id);
+        element.setAttribute('data-selected', isSelected ? 'true' : 'false');
+      }
+
+      layerMap.set(footprint.id, polygon);
+    }
+
+    return () => {
+      layerMap.clear();
+      footprintGroup.remove();
+    };
+  }, [placement, footprintPlacements]);
+
+  useEffect(() => {
+    for (const [id, polygon] of polygonLayersRef.current.entries()) {
+      applyFootprintSelectionState(polygon, id === selectedBuildingId);
+    }
+  }, [selectedBuildingId, placement, footprintPlacements]);
 
   useEffect(() => {
     const map = mapRef.current;

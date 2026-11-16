@@ -1,0 +1,172 @@
+[
+  {
+    "id": "palace-01",
+    "zoneId": "palace",
+    "isPilotSlice": true,
+    "buildingType": "서측 ㄱ자 행랑",
+    "footprint": [
+      [3700, 2300],
+      [3940, 2300],
+      [3940, 2430],
+      [3840, 2430],
+      [3840, 2520],
+      [3700, 2520]
+    ],
+    "mapImageVersion": "sample-v1",
+    "provenance": {
+      "verificationStatus": "verified",
+      "verificationSource": "자체 제작 샘플 지도 SVG 좌표 대조",
+      "verifiedGamePatch": "sample-v1",
+      "verifiedAt": "2026-11-16"
+    },
+    "attributes": {
+      "floors": {
+        "status": "verified",
+        "value": 2
+      },
+      "rooftopAccess": {
+        "status": "verified",
+        "value": {
+          "kind": "interior-stairs",
+          "summary": "중앙 내부 계단을 통해 옥상 진입 가능"
+        }
+      },
+      "entrances": {
+        "status": "verified",
+        "value": {
+          "count": 3,
+          "directionsSummary": "동쪽 안뜰 정문 1, 남쪽 복도 1, 서측 측면 1"
+        }
+      },
+      "exteriorImage": {
+        "status": "verified",
+        "value": {
+          "imagePath": "/buildings/palace-01-sample.svg",
+          "credit": "자체 제작 샘플 외관 도해 (공개 배포 안전 자산)",
+          "capturedPatch": "sample-v1"
+        }
+      }
+    }
+  },
+  {
+    "id": "palace-02",
+    "zoneId": "palace",
+    "isPilotSlice": true,
+    "buildingType": "북동 정전",
+    "footprint": [
+      [3960, 2300],
+      [4200, 2300],
+      [4200, 2490],
+      [3960, 2490]
+    ],
+    "mapImageVersion": "sample-v1",
+    "provenance": {
+      "verificationStatus": "verified",
+      "verificationSource": "자체 제작 샘플 지도 SVG 좌표 대조",
+      "verifiedGamePatch": "sample-v1",
+      "verifiedAt": "2026-11-16"
+    },
+    "attributes": {
+      "floors": {
+        "status": "verified",
+        "value": 2
+      },
+      "rooftopAccess": {
+        "status": "unverified",
+        "note": "옥상 진입 경로 샘플 대조 미완료"
+      },
+      "entrances": {
+        "status": "verified",
+        "value": {
+          "count": 2,
+          "directionsSummary": "남쪽 정문 1, 서측 측면 문 1"
+        }
+      },
+      "exteriorImage": {
+        "status": "unverified",
+        "note": "외관 도해 미등록 상태"
+      }
+    }
+  },
+  {
+    "id": "palace-03",
+    "zoneId": "palace",
+    "isPilotSlice": true,
+    "buildingType": "남서 별당",
+    "footprint": [
+      [3700, 2540],
+      [3940, 2540],
+      [3940, 2700],
+      [3700, 2700]
+    ],
+    "mapImageVersion": "sample-v1",
+    "provenance": {
+      "verificationStatus": "verified",
+      "verificationSource": "자체 제작 샘플 지도 SVG 좌표 대조",
+      "verifiedGamePatch": "sample-v1",
+      "verifiedAt": "2026-11-16"
+    },
+    "attributes": {
+      "floors": {
+        "status": "verified",
+        "value": 1
+      },
+      "rooftopAccess": {
+        "status": "verified",
+        "value": {
+          "kind": "exterior-climb",
+          "summary": "동측 외벽 파쿠르 난간을 통한 지붕 등반"
+        }
+      },
+      "entrances": {
+        "status": "unverified",
+        "note": "출입구 방향 추가 확인 필요"
+      },
+      "exteriorImage": {
+        "status": "verified",
+        "value": {
+          "imagePath": "/buildings/palace-03-sample.svg",
+          "credit": "자체 제작 샘플 외관 도해 (공개 배포 안전 자산)",
+          "capturedPatch": "sample-v1"
+        }
+      }
+    }
+  },
+  {
+    "id": "palace-04",
+    "zoneId": "palace",
+    "isPilotSlice": false,
+    "buildingType": "남동 미검증 별관",
+    "footprint": [
+      [4080, 2800],
+      [4280, 2800],
+      [4280, 2930],
+      [4080, 2930]
+    ],
+    "mapImageVersion": "sample-v1",
+    "provenance": {
+      "verificationStatus": "unverified",
+      "verificationSource": "현장 대조 대기",
+      "verifiedGamePatch": "unverified",
+      "verifiedAt": "2026-11-16"
+    },
+    "attributes": {
+      "floors": {
+        "status": "unverified",
+        "note": "미확인"
+      },
+      "rooftopAccess": {
+        "status": "unverified",
+        "note": "미확인"
+      },
+      "entrances": {
+        "status": "unverified",
+        "note": "미확인"
+      },
+      "exteriorImage": {
+        "status": "unverified",
+        "note": "미확인"
+      }
+    }
+  }
+]

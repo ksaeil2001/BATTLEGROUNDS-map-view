@@ -1,83 +1,16 @@
 import rawMapConfig from './map-config.json';
 import {
+  assertNonEmptyString,
+  assertPositiveFiniteNumber,
+  assertValidCanonicalBounds,
+  isRecord,
+} from './validation-helpers';
+import {
   CANONICAL_MAP_SIZE,
-  type CanonicalBounds,
   type MapDatasetConfig,
   type MapOverlayLayer,
   type TargetZone,
 } from '@/domain/types';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function assertNonEmptyString(value: unknown, label: string): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`Invalid ${label}: expected a non-empty string.`);
-  }
-  return value;
-}
-
-function assertPositiveFiniteNumber(value: unknown, label: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    throw new Error(`Invalid ${label}: expected a positive finite number.`);
-  }
-  return value;
-}
-
-function isWithinCanonicalRange(value: unknown): value is number {
-  return (
-    typeof value === 'number' &&
-    Number.isFinite(value) &&
-    value >= 0 &&
-    value <= CANONICAL_MAP_SIZE
-  );
-}
-
-function assertValidCanonicalBounds(
-  value: unknown,
-  label: string,
-): CanonicalBounds {
-  if (
-    !Array.isArray(value) ||
-    value.length !== 2 ||
-    !Array.isArray(value[0]) ||
-    value[0].length !== 2 ||
-    !Array.isArray(value[1]) ||
-    value[1].length !== 2
-  ) {
-    throw new Error(
-      `Invalid ${label} bounds: expected [[x1, y1], [x2, y2]] tuple.`,
-    );
-  }
-
-  const [topLeft, bottomRight] = value as [
-    [unknown, unknown],
-    [unknown, unknown],
-  ];
-
-  if (
-    !isWithinCanonicalRange(topLeft[0]) ||
-    !isWithinCanonicalRange(topLeft[1]) ||
-    !isWithinCanonicalRange(bottomRight[0]) ||
-    !isWithinCanonicalRange(bottomRight[1])
-  ) {
-    throw new Error(
-      `Invalid ${label} bounds: coordinates must lie within 0..${CANONICAL_MAP_SIZE}.`,
-    );
-  }
-
-  if (topLeft[0] >= bottomRight[0] || topLeft[1] >= bottomRight[1]) {
-    throw new Error(
-      `Invalid ${label} bounds: topLeft must be strictly less than bottomRight.`,
-    );
-  }
-
-  return [
-    [topLeft[0], topLeft[1]],
-    [bottomRight[0], bottomRight[1]],
-  ];
-}
 
 function validateOverlayLayer(value: unknown, index: number): MapOverlayLayer {
   if (!isRecord(value)) {
